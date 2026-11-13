@@ -1,0 +1,8 @@
+crons:
+  - name: konnto-tick
+    description: "Sends due reminders, chases late work up the line, and sends morning briefs and evening check-ins"
+    cron: "*/15 * * * *"
+    endpoint: "{{BASE_URL}}/api/cron/tick"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

@@ -1,55 +1,82 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
+import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
+import { RequireAuth } from "@/components/auth/session";
+import { MeProvider } from "@/context/MeContext";
+import Landing from "@/pages/Landing";
+import { TermsPage, PrivacyPolicyPage } from "@/pages/Legal";
+import { SignInPage, SignUpPage } from "@/pages/AuthPages";
+import WhatsAppLogin from "@/pages/WhatsAppLogin";
+import Onboarding from "@/pages/Onboarding";
+import Join from "@/pages/Join";
+import AppShell from "@/components/AppShell";
+import ChatPage from "@/pages/app/Chat";
+import DashboardPage from "@/pages/app/Dashboard";
+import WorkPage from "@/pages/app/Work";
+import TeamPage from "@/pages/app/Team";
+import ThreadPage from "@/pages/app/Thread";
+import ApprovalsPage from "@/pages/app/Approvals";
+import DocumentsPage from "@/pages/app/Documents";
+import KnowledgePage from "@/pages/app/Knowledge";
+import SettingsPage from "@/pages/app/Settings";
+import PrivacyPage from "@/pages/app/Privacy";
+import HelpPage from "@/pages/app/Help";
+import AdminLayout from "@/pages/admin/AdminLayout";
+import AdminBrain from "@/pages/admin/AdminBrain";
+import AdminSite from "@/pages/admin/AdminSite";
+import AdminPlans from "@/pages/admin/AdminPlans";
+import AdminCustomers from "@/pages/admin/AdminCustomers";
+import AdminFeedback from "@/pages/admin/AdminFeedback";
+import AdminSettings from "@/pages/admin/AdminSettings";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    // The marker attribute below lets the platform probe detect the stock splash — remove it with this page
-    <div data-emergent-splash>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+const Private = ({ children }) => (
+  <RequireAuth>
+    <MeProvider>{children}</MeProvider>
+  </RequireAuth>
+);
 
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
+        <ClerkAuthProvider>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/sign-in/*" element={<SignInPage />} />
+            <Route path="/sign-up/*" element={<SignUpPage />} />
+            <Route path="/login/whatsapp" element={<WhatsAppLogin />} />
+            <Route path="/join/:token" element={<Join />} />
+            <Route path="/onboarding" element={<Private><Onboarding /></Private>} />
+            <Route path="/app" element={<Private><AppShell /></Private>}>
+              <Route index element={<Navigate to="chat" replace />} />
+              <Route path="chat" element={<ChatPage />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="work" element={<WorkPage />} />
+              <Route path="team" element={<TeamPage />} />
+              <Route path="team/thread/:threadId" element={<ThreadPage />} />
+              <Route path="approvals" element={<ApprovalsPage />} />
+              <Route path="documents" element={<DocumentsPage />} />
+              <Route path="knowledge" element={<KnowledgePage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="privacy" element={<PrivacyPage />} />
+              <Route path="help" element={<HelpPage />} />
+            </Route>
+            <Route path="/admin" element={<Private><AdminLayout /></Private>}>
+              <Route index element={<AdminBrain />} />
+              <Route path="site" element={<AdminSite />} />
+              <Route path="plans" element={<AdminPlans />} />
+              <Route path="customers" element={<AdminCustomers />} />
+              <Route path="feedback" element={<AdminFeedback />} />
+              <Route path="settings" element={<AdminSettings />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </ClerkAuthProvider>
       </BrowserRouter>
+      <Toaster theme="light" position="top-center" richColors closeButton />
     </div>
   );
 }
