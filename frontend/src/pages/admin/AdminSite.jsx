@@ -32,7 +32,7 @@ export default function AdminSite() {
   };
   if (!site) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
   return (
-    <div className="p-4 lg:p-6 max-w-[900px] mx-auto space-y-4">
+    <div className="p-4 lg:p-8 max-w-[900px] mx-auto space-y-4">
       <PageHeader title="Website" subtitle="The public landing page text.">
         <Button onClick={save} disabled={busy} data-testid="site-save"><Save className="h-4 w-4 mr-1" /> {busy ? "Saving…" : "Save"}</Button>
       </PageHeader>

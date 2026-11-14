@@ -100,7 +100,7 @@ function MemberEditor({ member, onClose, onChange, scopes, canManage }) {
           </Select>
           <div>
             <div className="text-sm font-medium mb-1">Access</div>
-            <div className="space-y-1 rounded-xl border border-border bg-background p-3">
+            <div className="space-y-1 rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3">
               {Object.entries(scopes || {}).map(([s, label]) => (
                 <label key={s} className="flex items-start gap-2 text-sm">
                   <Checkbox checked={form.access.has(s)} onCheckedChange={() => toggleAccess(s)} data-testid={`member-access-${s}`} />
@@ -116,7 +116,7 @@ function MemberEditor({ member, onClose, onChange, scopes, canManage }) {
         </div>
       )}
       {member.links?.invite_url && (
-        <div className="rounded-xl border border-border bg-background p-3 space-y-2 text-sm">
+        <div className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3 space-y-2 text-sm">
           <div className="font-medium">Invite link</div>
           <div className="flex gap-2"><Input value={member.links.invite_url} readOnly data-testid="member-invite-url" /><Button size="icon" variant="outline" aria-label="Copy" onClick={() => { navigator.clipboard.writeText(member.links.invite_url); toast.success("Copied"); }}><Copy className="h-4 w-4" /></Button></div>
         </div>
@@ -154,7 +154,7 @@ export default function TeamPage() {
   const editing = data.members.find((m) => m.member_id === editId);
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1100px] mx-auto" data-testid="team-page">
+    <div className="p-4 lg:p-8 max-w-[1100px] mx-auto" data-testid="team-page">
       <PageHeader title="Team" subtitle="People, roles, access — and the chats that reach them wherever they are.">
         {data.can_manage && <InviteDialog onInvited={load} />}
       </PageHeader>
@@ -164,17 +164,17 @@ export default function TeamPage() {
       : (
         <div className="grid lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-2">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground px-1">People</div>
+            <div className="eyebrow text-muted-foreground px-1">People</div>
             {data.members.map((m) => (
-              <div key={m.member_id} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3" data-testid="team-member-row">
+              <div key={m.member_id} className="flex items-center gap-3 rounded-2xl surface px-3.5 py-3.5" data-testid="team-member-row">
                 <PersonAvatar name={m.name} size={40} tone={m.member_type === "owner" ? "owner" : m.member_type === "partner" ? "partner" : "default"} />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">{m.name}{m.member_id === data.me && <span className="ml-1 text-xs text-muted-foreground">(you)</span>}</div>
                   <div className="text-xs text-muted-foreground truncate">{m.job || m.member_type}{m.status === "invited" ? " · invited" : ""}</div>
                 </div>
                 <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
-                  {m.has_app && <span className="rounded-full border border-border bg-background px-2 py-0.5">App</span>}
-                  {m.has_whatsapp && <span className="rounded-full border border-border bg-background px-2 py-0.5">WhatsApp</span>}
+                  {m.has_app && <span className="rounded-full border border-primary/20 bg-accent/60 text-accent-foreground px-2 py-0.5">App</span>}
+                  {m.has_whatsapp && <span className="rounded-full border border-primary/20 bg-accent/60 text-accent-foreground px-2 py-0.5">WhatsApp</span>}
                 </div>
                 {m.member_id !== data.me && <Button size="sm" variant="outline" onClick={() => openDirect(m.member_id)} data-testid="team-direct-chat"><MessageSquare className="h-4 w-4" /></Button>}
                 <Button size="sm" variant="ghost" onClick={() => setEditId(m.member_id)} data-testid="team-edit-member"><Settings2 className="h-4 w-4" /></Button>
@@ -182,11 +182,11 @@ export default function TeamPage() {
             ))}
           </div>
           <div className="space-y-2">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground px-1">Threads</div>
-            {threads.length === 0 ? <div className="rounded-2xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">No threads yet. Start one from the people list.</div>
+            <div className="eyebrow text-muted-foreground px-1">Threads</div>
+            {threads.length === 0 ? <div className="rounded-2xl border border-dashed border-primary/25 bg-card/60 p-4 text-sm text-muted-foreground">No threads yet. Start one from the people list.</div>
             : threads.map((t) => (
-              <button key={t.thread_id} onClick={() => navigate(`/app/team/thread/${t.thread_id}`)} className="w-full text-left rounded-2xl border border-border bg-card px-3 py-3 hover:bg-accent/40" data-testid="team-thread-row">
-                <div className="flex items-center gap-2"><span className="font-medium truncate flex-1">{t.title}</span>{t.unread > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] grid place-items-center font-semibold">{t.unread}</span>}</div>
+              <button key={t.thread_id} onClick={() => navigate(`/app/team/thread/${t.thread_id}`)} className="w-full text-left rounded-2xl surface surface-hover px-3.5 py-3.5" data-testid="team-thread-row">
+                <div className="flex items-center gap-2"><span className="font-medium truncate flex-1">{t.title}</span>{t.unread > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-brand-red text-white text-[11px] grid place-items-center font-bold">{t.unread}</span>}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground truncate">{t.last_message_preview || "No messages yet"}</div>
               </button>
             ))}
@@ -195,7 +195,7 @@ export default function TeamPage() {
       )}
 
       <Sheet open={!!editId} onOpenChange={(v) => !v && setEditId(null)}>
-        <SheetContent className="w-full sm:w-[480px] overflow-y-auto scrollbar-thin bg-card" data-testid="team-member-sheet">
+        <SheetContent className="w-full sm:w-[480px] overflow-y-auto scrollbar-thin" data-testid="team-member-sheet">
           <SheetHeader><SheetTitle>Member details</SheetTitle></SheetHeader>
           {editing && <MemberEditor member={editing} canManage={data.can_manage && editing.member_type !== "owner"} scopes={scopes} onClose={() => setEditId(null)} onChange={load} />}
         </SheetContent>

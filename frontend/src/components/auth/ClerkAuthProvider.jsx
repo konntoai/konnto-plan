@@ -1,30 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClerkProvider } from "@clerk/react";
+import { useTheme } from "@/context/ThemeContext";
 
-// Brand Clerk here once: it styles sign-in, sign-up and the user menu.
-const appearance = {
-  variables: {
-    colorPrimary: "#0F766E",
+// Brand Clerk once per theme: it styles sign-in, sign-up and the user menu.
+const PALETTE = {
+  dark: {
+    colorPrimary: "#3D71FF",
     colorPrimaryForeground: "#ffffff",
-    colorForeground: "#1F2937",
+    colorForeground: "#F1F6FD",
+    colorMutedForeground: "#A2ADC3",
+    colorBackground: "#0A1230",
+    colorInput: "#0F162F",
+    colorInputForeground: "#F1F6FD",
+    colorBorder: "#1C2540",
+    colorNeutral: "#F1F6FD",
+    colorDanger: "#FF5A66",
+  },
+  light: {
+    colorPrimary: "#1453FF",
+    colorPrimaryForeground: "#ffffff",
+    colorForeground: "#11182C",
+    colorMutedForeground: "#566176",
     colorBackground: "#ffffff",
-    colorInput: "#ffffff",
-    colorInputForeground: "#1F2937",
-    colorBorder: "#E3E8EF",
-    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-    borderRadius: "0.75rem",
+    colorInput: "#F4F6FB",
+    colorInputForeground: "#11182C",
+    colorBorder: "#DADFE8",
+    colorNeutral: "#11182C",
+    colorDanger: "#E0243A",
   },
 };
+
+const buildAppearance = (theme) => ({
+  variables: {
+    ...PALETTE[theme === "light" ? "light" : "dark"],
+    fontFamily: "Figtree, ui-sans-serif, -apple-system, sans-serif",
+    fontFamilyButtons: "Figtree, ui-sans-serif, -apple-system, sans-serif",
+    borderRadius: "0.85rem",
+  },
+  elements: {
+    cardBox: "rounded-3xl border border-[hsl(var(--glass-border))] shadow-[0_30px_80px_-30px_hsl(var(--glow-blue))]",
+    headerTitle: "font-display font-extrabold tracking-tight",
+    formButtonPrimary: "bg-brand-gradient shadow-[0_10px_28px_-10px_hsl(var(--glow-blue))] hover:brightness-110",
+  },
+});
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 // Starts Clerk from the backend's runtime config, so deploy's live keys need no rebuild.
-// Must render inside <BrowserRouter> (see step 3) so Clerk navigates without reloading.
+// Must render inside <BrowserRouter> so Clerk navigates without reloading.
 export default function ClerkAuthProvider({ children }) {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [config, setConfig] = useState(null);
   const [unavailable, setUnavailable] = useState(false);
+  const appearance = useMemo(() => buildAppearance(theme), [theme]);
 
   // Retries while the backend restarts (e.g. right after provisioning): the app's
   // Clerk components crash if they ever render without <ClerkProvider>.

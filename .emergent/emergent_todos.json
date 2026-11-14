@@ -1,50 +1,50 @@
 [
   {
-    "content": "Create AppShell (responsive navigation: bottom tabs mobile, left rail desktop)",
+    "content": "Foundation: tokens (light+dark), fonts, animations in index.css; index.html dark-by-default; tailwind fonts/colors",
     "status": "completed"
   },
   {
-    "content": "Build Chat page (streaming + attachments + proposal cards + voice)",
+    "content": "ThemeProvider + ThemeToggle; Clerk + Sonner theme-aware",
     "status": "completed"
   },
   {
-    "content": "Build Dashboard page (counters + overdue/due/stuck/waiting/brief sections)",
+    "content": "Brand components: SVG Logo mark + wordmark, KonntoOrb (idle/thinking/streaming), common.jsx restyle",
     "status": "completed"
   },
   {
-    "content": "Build Work page (list + filters + detail sheet + status actions)",
+    "content": "shadcn primitives restyle: button, input, textarea, tabs, dialog, sheet, skeleton, dropdown/select/popover glass",
     "status": "completed"
   },
   {
-    "content": "Build Team page + Thread page (members, invite, direct chat)",
-    "status": "completed"
+    "content": "AppShell redesign (glass rail, topbar w/ toggle, bottom tabs)",
+    "status": "in_progress"
   },
   {
-    "content": "Build Approvals page (pending/decided, decide + undo + decide-in-words)",
-    "status": "completed"
+    "content": "Chat + BrainCard redesign (orb avatar, glass bubbles, floating composer, shimmer cards)",
+    "status": "pending"
   },
   {
-    "content": "Build Documents + Knowledge pages",
-    "status": "completed"
+    "content": "Dashboard/Work/Team/Thread/Approvals/Docs/Knowledge/Settings/Privacy/Help restyle",
+    "status": "pending"
   },
   {
-    "content": "Build Settings + Privacy + Help pages",
-    "status": "completed"
+    "content": "Landing page full redesign (AI hero, orb, chat mock, sections)",
+    "status": "pending"
   },
   {
-    "content": "Build Admin console (Brain/Site/Plans/Customers/Feedback/Settings)",
-    "status": "completed"
+    "content": "Auth/Onboarding/Join/WhatsApp/Legal restyle",
+    "status": "pending"
   },
   {
-    "content": "Add demo seed (owner-only, runs after onboarding)",
-    "status": "completed"
+    "content": "Admin layout + pages restyle",
+    "status": "pending"
   },
   {
-    "content": "Compile check (esbuild) + fix any JSX errors",
-    "status": "completed"
+    "content": "Compile + screenshots both themes desktop + mobile",
+    "status": "pending"
   },
   {
-    "content": "Screenshot smoke test + end-to-end testing agent run",
-    "status": "completed"
+    "content": "Testing agent regression run + fix issues",
+    "status": "pending"
   }
 ]

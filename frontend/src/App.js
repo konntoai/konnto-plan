@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
 import { RequireAuth } from "@/components/auth/session";
 import { MeProvider } from "@/context/MeContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import Landing from "@/pages/Landing";
 import { TermsPage, PrivacyPolicyPage } from "@/pages/Legal";
 import { SignInPage, SignUpPage } from "@/pages/AuthPages";
@@ -38,6 +39,7 @@ const Private = ({ children }) => (
 
 function App() {
   return (
+    <ThemeProvider>
     <div className="App">
       <BrowserRouter>
         <ClerkAuthProvider>
@@ -76,8 +78,9 @@ function App() {
           </Routes>
         </ClerkAuthProvider>
       </BrowserRouter>
-      <Toaster theme="light" position="top-center" richColors closeButton />
+      <Toaster position="top-center" closeButton />
     </div>
+    </ThemeProvider>
   );
 }
 

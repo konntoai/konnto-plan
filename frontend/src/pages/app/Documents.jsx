@@ -55,7 +55,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1100px] mx-auto" data-testid="documents-page">
+    <div className="p-4 lg:p-8 max-w-[1100px] mx-auto" data-testid="documents-page">
       <PageHeader title="Documents" subtitle="PDFs, Word, Excel — KONNTO reads them so you don’t have to.">
         <input ref={inputRef} type="file" className="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" onChange={(e) => e.target.files && upload(Array.from(e.target.files))} data-testid="documents-file-input" />
         <Button onClick={() => inputRef.current?.click()} disabled={uploading} data-testid="documents-upload-button">{uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />} Upload</Button>
@@ -66,8 +66,8 @@ export default function DocumentsPage() {
       : (
         <div className="space-y-2">
           {docs.map((d) => (
-            <button key={d.doc_id} onClick={() => setOpen(d.doc_id)} className="w-full text-left rounded-2xl border border-border bg-card p-3 hover:bg-accent/40 flex items-start gap-3" data-testid="document-row">
-              <div className="h-10 w-10 rounded-xl bg-accent text-accent-foreground grid place-items-center shrink-0"><FileText className="h-5 w-5" /></div>
+            <button key={d.doc_id} onClick={() => setOpen(d.doc_id)} className="w-full text-left rounded-2xl surface surface-hover p-3.5 flex items-start gap-3" data-testid="document-row">
+              <div className="h-10 w-10 rounded-xl bg-accent text-primary ring-1 ring-primary/15 grid place-items-center shrink-0"><FileText className="h-5 w-5" /></div>
               <div className="min-w-0 flex-1">
                 <div className="font-medium truncate">{d.filename}</div>
                 <div className="text-xs text-muted-foreground">{d.uploaded_by_name} · {fmtAgo(d.created_at)}</div>
@@ -79,18 +79,18 @@ export default function DocumentsPage() {
       )}
 
       <Sheet open={!!open} onOpenChange={(v) => !v && setOpen(null)}>
-        <SheetContent className="w-full sm:w-[520px] overflow-y-auto scrollbar-thin bg-card" data-testid="document-detail-sheet">
+        <SheetContent className="w-full sm:w-[520px] overflow-y-auto scrollbar-thin" data-testid="document-detail-sheet">
           <SheetHeader><SheetTitle>Document</SheetTitle></SheetHeader>
           {!detail ? <Loader2 className="h-4 w-4 animate-spin mt-6" />
           : (
             <div className="space-y-4 py-2">
               <div><div className="font-semibold text-lg">{detail.filename}</div><div className="text-xs text-muted-foreground">{detail.doc_type || "document"}</div></div>
-              {detail.summary && <div className="rounded-xl border border-border bg-background p-3 text-sm whitespace-pre-wrap">{detail.summary}</div>}
+              {detail.summary && <div className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3 text-sm whitespace-pre-wrap">{detail.summary}</div>}
               {detail.key_details?.length > 0 && (
                 <div><div className="text-sm font-semibold mb-1">Key details</div><ul className="text-sm space-y-1 list-disc pl-5">{detail.key_details.map((k, i) => <li key={i}>{typeof k === "string" ? k : `${k.label || "•"}: ${k.value || ""}`}</li>)}</ul></div>
               )}
               {detail.found_items?.length > 0 && (
-                <div className="rounded-xl border border-border bg-accent/40 p-3">
+                <div className="rounded-2xl border border-primary/25 bg-accent/50 p-3.5">
                   <div className="text-sm font-semibold">Found {detail.found_items.length} item{detail.found_items.length > 1 ? "s" : ""} inside</div>
                   <ul className="text-sm mt-1 space-y-0.5">{detail.found_items.map((i, idx) => <li key={idx}>• {i.title}</li>)}</ul>
                   <Button size="sm" className="mt-2" onClick={saveFound} data-testid="document-save-found"><PlusSquare className="h-4 w-4 mr-1" /> Save them to Work</Button>

@@ -9,6 +9,11 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Figtree', 'ui-sans-serif', '-apple-system', 'Segoe UI', 'sans-serif'],
+        display: ['Montserrat', 'ui-sans-serif', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['Roboto Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
@@ -48,6 +53,26 @@ module.exports = {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        brand: {
+          blue: 'hsl(var(--brand-blue-1))',
+          deep: 'hsl(var(--brand-blue-2))',
+          cyan: 'hsl(var(--brand-cyan))',
+          navy: 'hsl(var(--brand-navy-1))',
+          red: 'hsl(var(--brand-red))',
+        },
+        surface: {
+          1: 'hsl(var(--surface-1))',
+          2: 'hsl(var(--surface-2))',
+        },
+        status: {
+          overdue: 'hsl(var(--status-overdue))',
+          due: 'hsl(var(--status-due))',
+          stuck: 'hsl(var(--status-stuck))',
+          done: 'hsl(var(--status-done))',
+          open: 'hsl(var(--status-open))',
+          pending: 'hsl(var(--status-pending))',
+          decided: 'hsl(var(--status-decided))',
+        },
         chart: {
           '1': 'hsl(var(--chart-1))',
           '2': 'hsl(var(--chart-2))',

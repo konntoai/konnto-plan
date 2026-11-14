@@ -51,7 +51,7 @@ export default function SettingsPage() {
   const isOwner = me?.member?.member_type === "owner";
 
   return (
-    <div className="p-4 lg:p-6 max-w-[900px] mx-auto space-y-5" data-testid="settings-page">
+    <div className="p-4 lg:p-8 max-w-[900px] mx-auto space-y-5" data-testid="settings-page">
       <PageHeader title="Settings" subtitle="Your profile and business settings." />
 
       <SectionCard title="You" testid="settings-profile">

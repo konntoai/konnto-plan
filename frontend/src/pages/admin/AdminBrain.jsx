@@ -57,7 +57,7 @@ export default function AdminBrain() {
   if (!data) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1100px] mx-auto" data-testid="admin-brain-page">
+    <div className="p-4 lg:p-8 max-w-[1100px] mx-auto" data-testid="admin-brain-page">
       <PageHeader title="Teach KONNTO" subtitle={`Draft v${data.version + (data.has_unpublished ? " (unsaved changes)" : "")}`}>
         <Dialog>
           <DialogTrigger asChild><Button variant="outline" onClick={loadVersions} data-testid="brain-versions-button"><History className="h-4 w-4 mr-1" /> Versions</Button></DialogTrigger>
@@ -65,7 +65,7 @@ export default function AdminBrain() {
             <DialogHeader><DialogTitle>Version history</DialogTitle><DialogDescription>Any version can be loaded back as a draft.</DialogDescription></DialogHeader>
             <div className="max-h-[300px] overflow-y-auto scrollbar-thin space-y-2">{versions.length === 0 ? <div className="text-sm text-muted-foreground">No versions yet.</div>
               : versions.map((v) => (
-                <div key={v.version_id} className="flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2">
+                <div key={v.version_id} className="flex items-center gap-3 rounded-xl border border-border bg-[hsl(var(--surface-2))] px-3 py-2.5">
                   <div className="flex-1"><div className="text-sm font-medium">v{v.version}</div><div className="text-xs text-muted-foreground">{fmtAgo(v.published_at)} · {v.published_by}</div>{v.note && <div className="text-xs mt-1">{v.note}</div>}</div>
                   <Button size="sm" variant="outline" onClick={() => restore(v.version_id)} data-testid="brain-restore">Restore</Button>
                 </div>
@@ -94,14 +94,14 @@ export default function AdminBrain() {
               <Button variant="outline" onClick={() => runTest("business")} disabled={testBusy} data-testid="brain-test-business">As business assistant</Button>
             </div>
             {testBusy && <div className="mt-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline" /> Thinking…</div>}
-            {testA && <div className="mt-3 rounded-xl border border-border bg-background p-3 text-sm whitespace-pre-wrap" data-testid="brain-test-answer">{testA}</div>}
+            {testA && <div className="mt-3 rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3 text-sm whitespace-pre-wrap" data-testid="brain-test-answer">{testA}</div>}
           </SectionCard>
         </TabsContent>
         <TabsContent value="faqs" className="mt-3">
           <SectionCard title="Common questions" testid="brain-faqs-card">
             <div className="space-y-2">
               {faqs.map((f, i) => (
-                <div key={i} className="rounded-xl border border-border bg-background p-3 space-y-2" data-testid="brain-faq-row">
+                <div key={i} className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3 space-y-2" data-testid="brain-faq-row">
                   <Input value={f.q} placeholder="Question" onChange={(e) => { const c = [...faqs]; c[i] = { ...c[i], q: e.target.value }; setFaqs(c); }} />
                   <Textarea rows={2} value={f.a} placeholder="Answer" onChange={(e) => { const c = [...faqs]; c[i] = { ...c[i], a: e.target.value }; setFaqs(c); }} />
                   <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setFaqs(faqs.filter((_, j) => j !== i))} data-testid="brain-faq-remove"><Trash2 className="h-4 w-4" /> Remove</Button>

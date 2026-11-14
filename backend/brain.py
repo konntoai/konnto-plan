@@ -29,6 +29,35 @@ DEFAULT_BRAIN = {
 }
 
 
+PERSONAS = {
+    "chief_of_staff": {
+        "label": "Chief of Staff",
+        "voice": ("You speak like a trusted chief of staff who has been inside this business for years. Warm, direct, first-name basis. "
+                  "You lead with what actually needs a decision, give your judgment and a recommendation, and you are not afraid to say what is urgent and what can wait."),
+    },
+    "assistant": {
+        "label": "Executive Assistant",
+        "voice": ("You speak like a sharp, caring executive assistant. Polite, organised and reassuring. "
+                  "You keep track of everything, lay it out cleanly, and offer to handle the next step. You suggest rather than push."),
+    },
+    "advisor": {
+        "label": "Senior Advisor",
+        "voice": ("You speak like a seasoned CEO-level advisor and mentor. Calm, considered, slightly more formal. "
+                  "You explain the trade-off and the reasoning behind your recommendation in a sentence or two, and point out risks the owner might not see."),
+    },
+    "operator": {
+        "label": "Sharp Operator",
+        "voice": ("You speak like a no-nonsense operator. Short, punchy, bullet-first, minimal pleasantries. "
+                  "Numbers and names first, then one line on what to do."),
+    },
+}
+DEFAULT_PERSONA = "chief_of_staff"
+
+
+def persona_of(member: dict) -> dict:
+    return PERSONAS.get((member or {}).get("brain_persona") or DEFAULT_PERSONA, PERSONAS[DEFAULT_PERSONA])
+
+
 async def get_brain_config(draft: bool = False) -> dict:
     doc = await db.platform_config.find_one({"_id": "brain"})
     if not doc:
@@ -61,12 +90,12 @@ ANALYZE_TOOL = {"type": "function", "function": {
             "private": {"type": "boolean", "description": "True for a personal note only the speaker should see"},
         }, "required": ["kind", "title"]}},
         "actions": {"type": "array", "items": {"type": "object", "properties": {
-            "type": {"type": "string", "enum": ["invite_person", "message_person", "add_rule", "request_approval", "decide_approval", "update_item", "update_business", "remember_fact", "need_access"]},
+            "type": {"type": "string", "enum": ["invite_person", "message_person", "add_rule", "request_approval", "decide_approval", "update_item", "update_business", "remember_fact", "need_access", "handover", "set_persona"]},
             "name": {"type": "string", "description": "invite_person: person's name"},
             "job": {"type": "string", "description": "invite_person: what they do"},
             "member_type": {"type": "string", "enum": ["team", "partner"]},
             "phone": {"type": "string"},
-            "person": {"type": "string", "description": "message_person: who to message (name from people list)"},
+            "person": {"type": "string", "description": "message_person / handover: the person (name from people list)"},
             "text": {"type": "string", "description": "message_person text / add_rule rule text / remember_fact fact / need_access question"},
             "trigger": {"type": "string", "enum": ["reminder", "task", "approval", "any"], "description": "add_rule: when the rule applies"},
             "keyword": {"type": "string", "description": "add_rule: only applies to items mentioning this word, e.g. payment"},
@@ -81,6 +110,12 @@ ANALYZE_TOOL = {"type": "function", "function": {
             "reason": {"type": "string"}, "new_due_at": {"type": "string"},
             "business_name": {"type": "string"}, "industry": {"type": "string"}, "description": {"type": "string"}, "country": {"type": "string"},
             "scope": {"type": "string", "enum": list(SCOPES.keys())},
+            "message": {"type": "string", "description": "handover: the exact message KONNTO will send to the person, written warmly in the speaker's voice, without oversharing private details"},
+            "restrictions": {"type": "array", "items": {"type": "string"}, "description": "handover: limits the person must respect, e.g. 'No financial decisions without the owner's approval'"},
+            "escalation": {"type": "string", "description": "handover: what to do if something urgent comes up"},
+            "until": {"type": "string", "description": "handover: local ISO datetime when the handover ends; default end of today"},
+            "log_text": {"type": "string", "description": "handover: one-paragraph owner instruction for the activity log, starting 'OWNER INSTRUCTION —'"},
+            "persona": {"type": "string", "enum": list(PERSONAS.keys()), "description": "set_persona: chief_of_staff, assistant (executive assistant), advisor (senior advisor / CEO mentor), operator (short and punchy)"},
         }, "required": ["type"]}},
         "search_query": {"type": "string", "description": "Keywords to look up in the business memory to answer, or empty"},
     }, "required": ["language", "intent", "items", "actions"]}}}
@@ -126,6 +161,10 @@ Guidance:
 - update_item when someone reports progress on an existing item (use its id). Delayed/stuck need a reason.
 - update_business when the owner describes the business (name, industry, what it does, country).
 - remember_fact only for lasting facts about the business ("Our main supplier is Sharma Traders", "We close on Sundays"). Never for things already captured as items.
+- handover when the speaker (owner/manager) hands their responsibilities to someone for a period ("ask Priya to manage today", "I'm away, let Ramesh run things"), especially with limits ("don't let her take financial decisions", "ask me first"). Put the warm message to send in `message`, the limits in `restrictions`, the escalation path in `escalation`, end time in `until`, and a log paragraph in `log_text`. Do NOT also add message_person or add_rule for the same instruction.
+- People may be named by role or job title ("the PCM", "our accountant", "ops lead"): match them to the people list by job.
+- set_persona when the speaker asks you to change how you talk ("be more formal", "talk like a CEO advisor", "keep it short").
+- Questions like "what needs my attention", "status", "what's urgent" are intent ask with no items and no actions.
 - need_access when the speaker asks for information outside their access (money, staff details, others' work, documents) — never for the owner.
 - search_query: keywords to find what is needed to answer questions.
 Return empty lists when nothing applies. Never invent people; if an assignee is not in the people list, still write their name."""
@@ -149,36 +188,51 @@ async def analyze(org, member, text, people, open_items, approvals, rules, cfg) 
 
 # ------------------------------------------------------------------ reply (streamed)
 
-def reply_system(org, member, cfg, sources: list, cards_summary: list, extra: str = "") -> str:
+def reply_system(org, member, cfg, sources: list, cards_summary: list, extra: str = "", live: str = "") -> str:
     tz = org_tz(org)
     src_txt = "\n".join(f"[{s['n']}] ({s['type']}) {s['title']}: {s.get('snippet', '')[:400]}" for s in sources) or "(no matching records)"
     cards_txt = "\n".join(f"- {c}" for c in cards_summary) or "- nothing"
-    return f"""{cfg.get('personality')}
+    first = (member.get("name") or "").split(" ")[0] or "there"
+    persona = persona_of(member)
+    return f"""You are K-BRAIN, the KONNTO intelligence layer for the business "{org.get('name')}" ({org.get('industry') or 'industry not set'}).
+{cfg.get('personality')}
+Your voice right now ({persona['label']}): {persona['voice']}
 {cfg.get('rules')}
 About KONNTO: {cfg.get('knowledge')}
 
-You work for the business "{org.get('name')}". Local time: {now().astimezone(tz).strftime('%A %d %b %Y %H:%M')}.
-You are talking to {member['name']} ({member.get('member_type')}, job: {member.get('job') or '-'}).
+Local time: {now().astimezone(tz).strftime('%A %d %b %Y %H:%M')}. Currency: {org.get('currency') or 'USD'}.
+You are talking to {member['name']} (call them {first}; {member.get('member_type')}, job: {member.get('job') or '-'}).
 
-Business memory you may use (only these; cite with [n] right after the fact you use):
+LIVE STATE of the business (only what {first} is allowed to see; this is real, use exact names and amounts):
+{live or '(nothing live)'}
+
+Other business memory found for this message (cite with [n] only when you use a document, fact or team-chat line from here):
 {src_txt}
 
-What KONNTO already did or prepared for this message (cards are shown to the person under your reply; do not repeat their details at length):
+What KONNTO already did or prepared for this message (shown as cards under your reply):
 {cards_txt}
 {extra}
-Write the reply:
+HOW TO TALK
+- You are a knowledgeable person who knows this business inside out, not a chatbot. Never say "as an AI". Never lecture or give generic advice.
 - Same language as the person's message.
-- 1-3 short sentences, or a short bullet list when listing work. No headings. No emojis.
-- If something is prepared for saving, say it is ready and NOT saved yet ("Tap Save to keep it."). Never say it is saved or logged.
-- If you don't know, say so and suggest what to tell you. Never invent records."""
+- Match length to the question. Small talk or a simple fact: 1-2 sentences. "Status", "what needs my attention", "what's urgent", planning questions: a real briefing.
+- In a briefing: open with one line addressed to {first} (e.g. "{first}, here's what actually needs a decision from you today."), then the items in priority order as "- " bullets or "1." numbered lines, each with the amount/name and WHY it matters now (time pressure, customer waiting, money, blockers). Use only the live state above.
+- Use judgment: say which one is most time-sensitive, which ones can wait ("can move tomorrow without breakage"), and connect facts across the business (e.g. cash vs. approvals, a delay that blocks dispatch) when the live state supports it.
+- Volunteer at most 1-2 extra signals worth knowing, introduced naturally ("Beyond approvals, two things worth knowing:"). Skip this when nothing matters.
+- End with one clear next step you can take for them ("Tell me which ones you want to approve and I'll line them up for your confirmation.").
+- If the person shares something personal or hard (illness, a death, stress), lead with brief, sincere care in one line, then quietly take load off them. No over-the-top sympathy.
+- ONLY when the list above says a handover was prepared: show the drafted message to the person in quotes, say "Confirm and this goes to <name> immediately.", state what stays on hold for them, and close kindly. If no handover was prepared, never claim one is ready; ask who should take over instead.
+- Plain text only: no markdown headings, no ** bold, no emojis, no tables. Use blank lines between sections.
+- If something is prepared for saving or confirming, say it is ready and NOT done yet. Never claim something was saved, sent or approved unless the list above says so.
+- If you don't know, say so and say what to tell you. Never invent people, amounts, dates or records."""
 
 
-async def stream_reply(org, member, text, cfg, sources, cards_summary, history: list, extra: str = "") -> AsyncGenerator:
-    system = reply_system(org, member, cfg, sources, cards_summary, extra)
+async def stream_reply(org, member, text, cfg, sources, cards_summary, history: list, extra: str = "", live: str = "") -> AsyncGenerator:
+    system = reply_system(org, member, cfg, sources, cards_summary, extra, live)
     initial = [{"role": "system", "content": system}]
     for h in history[-8:]:
         if h.get("text"):
-            initial.append({"role": "user" if h["role"] == "user" else "assistant", "content": h["text"][:1500]})
+            initial.append({"role": "user" if h["role"] == "user" else "assistant", "content": h["text"][:2500]})
     chat = LlmChat(api_key=KEY, session_id=f"kr-{uuid.uuid4().hex}", system_message=system, initial_messages=initial).with_model("anthropic", MODEL)
     usage = None
     try:

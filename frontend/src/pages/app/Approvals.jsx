@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PageHeader, EmptyState, PersonAvatar } from "@/components/common";
+import { PageHeader, EmptyState, PersonAvatar, TonePill } from "@/components/common";
 import { useApi } from "@/lib/api";
 import { fmtAgo, money } from "@/lib/format";
 
@@ -31,21 +31,21 @@ function ApprovalCard({ ap, canDecide, onDecide, onUndo, onReply }) {
   const pending = ap.status === "pending";
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4" data-testid="approval-card">
+    <div className="rounded-3xl surface p-4 sm:p-5" data-testid="approval-card">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <PersonAvatar name={ap.requested_by_name} size={36} />
           <div className="min-w-0">
             <div className="text-sm text-muted-foreground">{ap.requested_by_name} · {fmtAgo(ap.created_at)}</div>
-            <div className="font-medium truncate">{ap.title}</div>
+            <div className="font-display font-bold text-[15px] sm:text-base truncate">{ap.title}</div>
           </div>
         </div>
         {pending
-          ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 text-xs"><Clock className="h-3.5 w-3.5" /> Pending</span>
-          : <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 text-xs" data-testid="approval-decided-pill"><Check className="h-3.5 w-3.5" /> Decided</span>}
+          ? <TonePill tone="pending" icon={Clock}>Pending</TonePill>
+          : <TonePill tone="decided" icon={Check} testid="approval-decided-pill">Decided</TonePill>}
       </div>
       {ap.details && <p className="mt-2 text-sm text-muted-foreground">{ap.details}</p>}
-      {ap.amount != null && <div className="mt-2 text-sm">Amount: <span className="font-medium">{money(ap.amount, ap.currency)}</span></div>}
+      {ap.amount != null && <div className="mt-3 inline-flex items-baseline gap-2 rounded-xl border border-border bg-[hsl(var(--surface-2))] px-3 py-2"><span className="eyebrow text-muted-foreground">Amount</span><span className="font-mono tabular text-lg font-semibold">{money(ap.amount, ap.currency)}</span></div>}
 
       {pending && canDecide && (
         <div className="mt-4 space-y-3">
@@ -109,7 +109,7 @@ export default function ApprovalsPage() {
   };
 
   return (
-    <div className="p-4 lg:p-6 max-w-[900px] mx-auto" data-testid="approvals-page">
+    <div className="p-4 lg:p-8 max-w-[900px] mx-auto" data-testid="approvals-page">
       <PageHeader title="Approvals" subtitle={data.can_decide ? "Decide once, always, or don’t allow. Undo any time." : "Your approval requests and their status."} />
       <Tabs value={tab} onValueChange={setTab} className="mb-4">
         <TabsList data-testid="approvals-tabs">

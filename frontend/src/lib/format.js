@@ -45,7 +45,7 @@ export function money(amount, currency) {
   if (amount === null || amount === undefined || amount === "") return "";
   const sym = SYMBOLS[(currency || "").toUpperCase()] ?? (currency ? `${currency} ` : "");
   const n = Number(amount);
-  return `${sym}${isNaN(n) ? amount : n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  return `${sym}${isNaN(n) ? amount : n.toLocaleString((currency || "").toUpperCase() === "INR" ? "en-IN" : undefined, { maximumFractionDigits: 2 })}`;
 }
 
 export const KIND_LABEL = { task: "Task", promise: "Promise", reminder: "Reminder", decision: "Decision", note: "Personal note" };

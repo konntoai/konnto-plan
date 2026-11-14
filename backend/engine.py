@@ -7,7 +7,7 @@ from typing import Optional, AsyncGenerator
 
 from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso, fmt_local, app_link,
                   has_scope, is_owner, item_scope_query, doc_scope_query, redact_item, item_state, SCOPES,
-                  SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits)
+                  SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits, org_tz)
 from channels import notify, add_notice, wa_send, wa_join_link, wa_configured
 import brain
 
@@ -43,9 +43,30 @@ def money(amount, currency: Optional[str]) -> str:
     try:
         val = float(amount)
         txt = f"{val:,.0f}" if val == int(val) else f"{val:,.2f}"
+        if (currency or "").upper() == "INR":
+            txt = _indian_group(val)
     except Exception:
         txt = str(amount)
     return f"{sym}{txt}"
+
+
+def _indian_group(val: float) -> str:
+    neg = val < 0
+    val = abs(val)
+    whole = int(val)
+    frac = val - whole
+    digits = str(whole)
+    if len(digits) > 3:
+        head, tail = digits[:-3], digits[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        digits = ",".join(parts + [tail])
+    out = digits + (f"{frac:.2f}"[1:] if frac >= 0.005 else "")
+    return ("-" if neg else "") + out
 
 
 def nice_ceiling(amount: float) -> float:
@@ -102,8 +123,12 @@ async def owners(org_id: str) -> list:
     return await db.members.find({"org_id": org_id, "status": "active", "member_type": "owner"}, {"_id": 0}).to_list(20)
 
 
+def _not_expired() -> dict:
+    return {"$or": [{"expires_at": None}, {"expires_at": {"$exists": False}}, {"expires_at": {"$gt": iso()}}]}
+
+
 async def active_rules(org_id: str) -> list:
-    return await db.rules.find({"org_id": org_id, "active": True}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return await db.rules.find({"org_id": org_id, "active": True, **_not_expired()}, {"_id": 0}).sort("created_at", -1).to_list(200)
 
 
 async def visible_open_items(member: dict, limit: int = 40) -> list:
@@ -271,11 +296,11 @@ async def release_dependents(org: dict, item: dict):
 
 # ================================================================ rules
 async def add_rule(org: dict, actor: dict, text: str, *, kind: str = "behaviour", trigger: str = "any", keyword: Optional[str] = None,
-                   notify_target: Optional[str] = None, condition: Optional[dict] = None, source: str = "chat") -> dict:
-    rule = {"rule_id": new_id("rul"), "org_id": org["org_id"], "text": text.strip()[:300], "kind": kind, "trigger": trigger or "any",
+                   notify_target: Optional[str] = None, condition: Optional[dict] = None, source: str = "chat", expires_at: Optional[str] = None) -> dict:
+    rule = {"rule_id": new_id("rul"), "org_id": org["org_id"], "text": text.strip()[:600], "kind": kind, "trigger": trigger or "any",
             "keyword": (keyword or "").strip().lower() or None, "notify_target": (notify_target or "").strip() or None,
             "condition": condition or {}, "created_by": actor["member_id"], "created_by_name": actor["name"], "source": source,
-            "active": True, "created_at": iso()}
+            "active": True, "expires_at": expires_at, "created_at": iso()}
     await db.rules.insert_one(dict(rule))
     rule.pop("_id", None)
     await audit(org["org_id"], actor["member_id"], "rule_added", {"rule_id": rule["rule_id"], "text": rule["text"]})
@@ -284,7 +309,7 @@ async def add_rule(org: dict, actor: dict, text: str, *, kind: str = "behaviour"
 
 async def apply_behaviour_rules(org: dict, trigger: str, item: dict, actor: Optional[dict] = None):
     rules = await db.rules.find({"org_id": org["org_id"], "active": True, "kind": "behaviour", "trigger": {"$in": [trigger, "any"]},
-                                 "notify_target": {"$ne": None}}, {"_id": 0}).to_list(50)
+                                 "notify_target": {"$ne": None}, **_not_expired()}, {"_id": 0}).to_list(50)
     if not rules:
         return
     people = await org_people(org["org_id"], include_invited=False)
@@ -591,16 +616,116 @@ async def retrieve(org: dict, member: dict, query: str, text: str, include_open:
     if include_open:
         for i in await visible_open_items(member, 15):
             add("work", i["item_id"], i["title"], item_snip(i), f"/app/work?item={i['item_id']}")
-    if has_scope(member, "approve"):
+    if include_open and has_scope(member, "approve"):
         for a in await db.approvals.find({"org_id": org["org_id"], "status": "pending"}, {"_id": 0}).to_list(5):
             add("approval", a["approval_id"], f"Approval: {a['title']}", f"asked by {a['requested_by_name']}, {a['kind']}" + (f", {money(a.get('amount'), a.get('currency'))}" if a.get('amount') is not None else ""), "/app/approvals")
     return sources
 
 
+# ================================================================ live state (what K-BRAIN knows right now)
+
+def _ago(ts: Optional[str]) -> str:
+    d = parse_iso(ts)
+    if not d:
+        return ""
+    secs = (now() - d).total_seconds()
+    if secs < 3600:
+        return f"{max(1, int(secs // 60))} min"
+    if secs < 86400:
+        return f"{int(secs // 3600)} h"
+    return f"{int(secs // 86400)} day{'s' if secs >= 172800 else ''}"
+
+
+def _short_money(total: float, currency: Optional[str]) -> str:
+    if (currency or "").upper() == "INR" and total >= 100000:
+        return f"{CURRENCY_SYMBOLS.get('INR', 'Rs ')}{total / 100000:.2f}L"
+    return money(total, currency)
+
+
+async def live_state(org: dict, member: dict) -> str:
+    ccy = org.get("currency")
+    out = []
+    ref = now()
+    people = await org_people(org["org_id"])
+    roster = [f"{p['name']} ({p.get('job') or p.get('member_type')}{', invited' if p.get('status') == 'invited' else ''})" for p in people if p["member_id"] != member["member_id"]]
+    if roster:
+        out.append("People: " + "; ".join(roster[:25]))
+    # approvals
+    if has_scope(member, "approve"):
+        aps = await db.approvals.find({"org_id": org["org_id"], "status": "pending"}, {"_id": 0}).sort("created_at", 1).to_list(30)
+        total = sum(float(a.get("amount") or 0) for a in aps)
+        if aps:
+            out.append(f"Approvals waiting for {member['name'].split(' ')[0]} ({len(aps)}, {_short_money(total, ccy)} in money requests):")
+            for a in aps:
+                amt = money(a.get("amount"), a.get("currency") or ccy) if a.get("amount") is not None else "no cash amount"
+                det = f" — {a['details'][:160]}" if a.get("details") else ""
+                out.append(f"- {a['title']} | {amt} | raised by {a.get('requested_by_name')} | {a.get('kind')} | waiting {_ago(a.get('created_at'))}{det}")
+        else:
+            out.append("Approvals waiting: none.")
+    else:
+        mine = await db.approvals.find({"org_id": org["org_id"], "requested_by": member["member_id"], "status": "pending"}, {"_id": 0}).to_list(10)
+        if mine:
+            out.append("Your requests still waiting for the owner:")
+            out += [f"- {a['title']} (waiting {_ago(a.get('created_at'))})" for a in mine]
+    # work
+    items = await visible_open_items(member, 80)
+    buckets = {"overdue": [], "due": [], "stuck": [], "delayed": [], "in_progress": [], "open": []}
+    for i in items:
+        st = item_state(i, ref)
+        if i.get("status") == "delayed" and st != "overdue":
+            st = "delayed"
+        elif i.get("status") == "in_progress" and st == "open":
+            st = "in_progress"
+        buckets.setdefault(st, []).append(i)
+
+    def line(i):
+        bits = [i["title"], f"{i.get('kind')}", f"for {i.get('assignee_name') or '-'}"]
+        if i.get("due_at"):
+            bits.append(f"due {fmt_local(i['due_at'], org)}")
+        if i.get("counterparty"):
+            bits.append(f"with {i['counterparty']}")
+        if i.get("amount") is not None:
+            bits.append(money(i["amount"], i.get("currency") or ccy))
+        if i.get("delay_reason") or i.get("stuck_reason"):
+            bits.append(f"reason: {i.get('delay_reason') or i.get('stuck_reason')}")
+        if i.get("details"):
+            bits.append(i["details"][:120])
+        return "- " + " | ".join(bits)
+    labels = [("overdue", "Overdue"), ("due", "Due in the next 24 hours"), ("stuck", "Stuck"), ("delayed", "Delayed"), ("in_progress", "In progress"), ("open", "Other open work")]
+    for key, label in labels:
+        b = buckets.get(key) or []
+        if b:
+            out.append(f"{label} ({len(b)}):")
+            out += [line(i) for i in b[:10 if key != 'open' else 8]]
+    if not items:
+        out.append("Open work: none.")
+    # standing instructions / temporary handovers
+    rules = await active_rules(org["org_id"])
+    if rules:
+        out.append("Instructions in effect:")
+        for r in rules[:12]:
+            exp = f" (until {fmt_local(r['expires_at'], org)})" if r.get("expires_at") else ""
+            out.append(f"- {r['text']}{exp}")
+    # business facts (cash, suppliers, policies)
+    facts = await db.knowledge.find({"org_id": org["org_id"], "deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(15)
+    if facts:
+        out.append("Business facts KONNTO remembers:")
+        out += [f"- {f['text'][:200]}" for f in facts]
+    # team signals in the last 36h
+    threads = await db.threads.find({"org_id": org["org_id"], "member_ids": member["member_id"]}, {"thread_id": 1, "_id": 0}).to_list(200)
+    if threads:
+        since = iso(ref - timedelta(hours=36))
+        msgs = await db.thread_messages.find({"thread_id": {"$in": [t["thread_id"] for t in threads]}, "created_at": {"$gt": since}}, {"_id": 0}).sort("created_at", -1).to_list(6)
+        if msgs:
+            out.append("Recent team chat:")
+            out += [f"- {m['sender_name']} ({_ago(m['created_at'])} ago): {m['text'][:180]}" for m in reversed(msgs)]
+    return "\n".join(out)
+
+
 # ================================================================ the pipeline: talk -> think -> act
 
 async def _history(member: dict, limit: int = 10) -> list:
-    msgs = await db.brain_messages.find({"org_id": member["org_id"], "member_id": member["member_id"]}, {"_id": 0, "role": 1, "text": 1}).sort("created_at", -1).to_list(limit)
+    msgs = await db.brain_messages.find({"org_id": member["org_id"], "member_id": member["member_id"], "archived": {"$ne": True}}, {"_id": 0, "role": 1, "text": 1}).sort("created_at", -1).to_list(limit)
     msgs.reverse()
     # Anthropic needs alternating turns starting with user: merge runs, drop leading assistant turns
     merged = []
@@ -714,6 +839,38 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
                                                "created_by": member["member_id"], "created_by_name": member["name"], "created_at": iso()})
                 cards.append({"card_id": new_id("crd"), "type": "fact", "status": "saved", "data": {"fact_id": fid, "text": a["text"][:400]}})
                 summaries.append(f"Remembered: {a['text'][:120]}")
+            elif t == "handover" and (a.get("person") or a.get("name")):
+                a["person"] = a.get("person") or a.get("name")
+                p = find_person(people, a["person"], member)
+                if not has_scope(member, "manage_team"):
+                    summaries.append("Only the owner or a manager can hand over responsibilities; nothing was prepared")
+                elif not p or p["member_id"] == member["member_id"]:
+                    summaries.append(f"Could not find '{a['person']}' in the business, so no handover was prepared. Ask who should take over.")
+                else:
+                    until = local_to_utc_iso(a.get("until"), org, default_hour=23) if a.get("until") else None
+                    if not until:
+                        tz = org_tz(org)
+                        end_local = now().astimezone(tz).replace(hour=23, minute=59, second=0, microsecond=0)
+                        until = iso(end_local)
+                    restrictions = [r.strip() for r in (a.get("restrictions") or []) if r and r.strip()][:6]
+                    message = (a.get("message") or a.get("text") or "").strip()
+                    if not message:
+                        message = f"Hi {p['name'].split(' ')[0]}, {member['name'].split(' ')[0]} is unavailable today. Please manage operations."
+                    log_text = (a.get("log_text") or "").strip() or (
+                        f"OWNER INSTRUCTION — {member['name']} is unavailable. {p['name']} ({p.get('job') or 'team'}) to manage operations. "
+                        + ("RESTRICTION: " + "; ".join(restrictions) + ". " if restrictions else "")
+                        + (a.get("escalation") or ""))
+                    cards.append({"card_id": new_id("crd"), "type": "handover", "status": "pending", "data": {
+                        "to_member_id": p["member_id"], "to_name": p["name"], "to_job": p.get("job"), "message": message[:1500],
+                        "restrictions": restrictions, "escalation": (a.get("escalation") or "")[:300], "until": until, "log_text": log_text[:1200]}})
+                    summaries.append(f"Prepared a handover to {p['name']} ({p.get('job') or 'team'}) \u2014 this is the person they meant by '{a['person']}' (NOT sent yet — waits for the person to tap Confirm). Drafted message: \"{message[:600]}\". "
+                                     f"Restrictions: {'; '.join(restrictions) or 'none'}. Ends {fmt_local(until, org)}.")
+            elif t == "set_persona" and a.get("persona") in brain.PERSONAS:
+                await db.members.update_one({"member_id": member["member_id"]}, {"$set": {"brain_persona": a["persona"]}})
+                member["brain_persona"] = a["persona"]
+                label = brain.PERSONAS[a["persona"]]["label"]
+                cards.append({"card_id": new_id("crd"), "type": "persona", "status": "saved", "data": {"persona": a["persona"], "label": label}})
+                summaries.append(f"Switched your conversation style to {label}. Speak in that style from this reply on.")
             elif t == "need_access" and not is_owner(member) and a.get("scope") in SCOPES and not has_scope(member, a.get("scope")):
                 existing = await db.approvals.find_one({"org_id": org["org_id"], "kind": "access", "requested_by": member["member_id"], "scope": a["scope"], "status": "pending"})
                 if not existing:
@@ -766,14 +923,15 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
             cards.append({"card_id": new_id("crd"), "type": "doc", "status": "saved", "data": {"doc_id": a["doc_id"], "filename": a.get("filename"), "summary": a.get("summary", "")[:400]}})
     yield {"type": "cards", "cards": cards}
 
-    sources = await retrieve(org, member, analysis.get("search_query") or "", text)
+    sources = await retrieve(org, member, analysis.get("search_query") or "", text, include_open=False)
+    live = await live_state(org, member)
     history = await _history(member)
     rules_txt = "\n".join(f"- {r['text']}" for r in rules[:20])
     extra = (f"\nBusiness rules to follow:\n{rules_txt}\n" if rules_txt else "") + (f"\nAttached content:\n{extra_context[:3000]}\n" if extra_context else "")
     if analysis.get("failed"):
         extra += "\n(Understanding step failed; just answer helpfully and say nothing was saved.)"
     out = []
-    async for d in brain.stream_reply(org, member, text, cfg, sources, summaries, history, extra):
+    async for d in brain.stream_reply(org, member, text, cfg, sources, summaries, history, extra, live):
         out.append(d)
         yield {"type": "delta", "text": d}
     reply = "".join(out).strip()
@@ -826,6 +984,33 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             await db.items.update_one({"item_id": card["item_id"], "org_id": org["org_id"]}, {"$set": {"deleted": True, "updated_at": iso()}})
             card["status"] = "pending"
             card.pop("item_id", None)
+    elif card["type"] == "handover" and op in ("confirm", "dismiss", "undo"):
+        d = card["data"]
+        if op == "confirm" and card["status"] == "pending":
+            p = await db.members.find_one({"member_id": d["to_member_id"], "org_id": org["org_id"]}, {"_id": 0})
+            if not p:
+                return {"error": "not_found"}
+            body = d["message"]
+            if d.get("restrictions") and not any(r.lower()[:20] in body.lower() for r in d["restrictions"]):
+                body += "\n\nPlease note: " + "; ".join(d["restrictions"]) + "."
+            thread = await get_or_create_direct_thread(org["org_id"], member, p)
+            sent = await post_thread_message(org, member, thread, body, spot=False)
+            rule_text = (f"Handover: {p['name']} manages operations for {member['name']}."
+                         + (" " + "; ".join(d["restrictions"]) + "." if d.get("restrictions") else "")
+                         + (f" Escalation: {d['escalation']}" if d.get("escalation") else ""))
+            rule = await add_rule(org, member, rule_text, kind="handover", trigger="any", source="handover", expires_at=d.get("until"))
+            act_id = new_id("act")
+            await db.activity_log.insert_one({"activity_id": act_id, "org_id": org["org_id"], "kind": "owner_instruction", "text": d.get("log_text") or rule_text,
+                                              "by": member["member_id"], "by_name": member["name"], "to_member_id": p["member_id"], "rule_id": rule["rule_id"],
+                                              "until": d.get("until"), "created_at": iso()})
+            await audit(org["org_id"], member["member_id"], "handover_confirmed", {"to": p["member_id"], "rule_id": rule["rule_id"], "activity_id": act_id})
+            card["status"] = "confirmed"
+            card["data"] = {**d, "rule_id": rule["rule_id"], "thread_id": thread["thread_id"], "activity_id": act_id, "deliveries": sent.get("deliveries"), "confirmed_at": iso()}
+        elif op == "dismiss" and card["status"] == "pending":
+            card["status"] = "dismissed"
+        elif op == "undo" and card["status"] == "confirmed" and d.get("rule_id"):
+            await db.rules.update_one({"rule_id": d["rule_id"], "org_id": org["org_id"]}, {"$set": {"active": False, "removed_at": iso()}})
+            card["status"] = "ended"
     elif op == "undo":
         if card["type"] == "invite" and card["status"] == "created":
             await db.members.update_one({"member_id": card["data"]["member_id"], "status": "invited"}, {"$set": {"status": "removed"}})

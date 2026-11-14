@@ -1,509 +1,403 @@
 {
-  "product": {
+  "brand": {
     "name": "KONNTO AI",
-    "tagline": "One calm AI brain for your business — talk, save, and it acts.",
-    "brand_attributes": [
-      "calm",
-      "premium",
-      "trustworthy",
-      "WhatsApp-native",
-      "fast on mobile",
-      "no-training-required"
+    "design_personality": [
+      "AI-native, premium, futuristic",
+      "trustworthy for money + approvals",
+      "India-first SMB friendly (high readability, big touch targets)",
+      "calm on data screens, bold on AI touchpoints"
     ],
-    "design_personality": {
-      "keywords": [
-        "messaging-first",
-        "quiet confidence",
-        "white cards",
-        "charcoal text",
-      "single deep-teal accent",
-        "high-contrast status colors",
-        "short sentences",
-        "big tap targets"
-      ],
-      "anti_patterns": [
-        "centered-everything layouts",
-        "busy gradients",
-        "purple accents",
-        "tiny icon-only actions",
-        "heavy shadows",
-        "dense paragraphs",
-        "training/tutorial-first onboarding"
-      ]
-    }
-  },
-
-  "global_rules": {
-    "language": "English only",
-    "pricing_visibility": "Never show prices to customers anywhere in the customer-facing app or landing pages.",
-    "mobile_first": {
-      "baseline_width": 390,
-      "tap_target_min_px": 44,
-      "safe_area": "Respect iOS safe-area insets for bottom tab bar and composer."
+    "logo": {
+      "source_url": "https://customer-assets-lqy194kg.emergentagent.net/job_konnto-plan--87psd4r7/artifacts/fa88f4351d22efae_KONNTO%20Logo%20on%20Blue%20Gradient.png",
+      "notes": "Use as brand anchor. Recreate mark as inline SVG component (JS) so it stays crisp in both themes. Keep wordmark Montserrat-like: wide, geometric, bold."
     },
-    "testing": {
-      "data_testid_required": "All interactive and key informational elements MUST include data-testid in kebab-case describing role (not appearance).",
-      "examples": [
-        "data-testid=\"chat-composer-send-button\"",
-        "data-testid=\"work-item-status-pill\"",
-        "data-testid=\"approvals-allow-once-button\"",
-        "data-testid=\"dashboard-overdue-counter\""
+    "inspiration_refs": {
+      "visual_refs": [
+        {
+          "title": "Modeinspect AI chat interface gallery",
+          "url": "https://modeinspect.com/gallery/ai-chat-interface",
+          "takeaways": [
+            "floating glass composer",
+            "AI speaker seam/glow",
+            "orb/voice blob as presence"
+          ]
+        },
+        {
+          "title": "Glassmorphic AI Chat Interface (Dribbble)",
+          "url": "https://dribbble.com/shots/26311046-Glassmorphic-AI-Chat-Interface-Skincare-Assistant",
+          "takeaways": [
+            "frosted panels + subtle borders",
+            "premium spacing + soft shadows"
+          ]
+        },
+        {
+          "title": "60fps.design voice blob interactions",
+          "url": "https://60fps.design/shots/chatgpt-voice-blob-gradient-interaction",
+          "takeaways": [
+            "orb states: idle/thinking/streaming",
+            "motion that feels alive but not chaotic"
+          ]
+        }
+      ],
+      "implementation_refs": [
+        {
+          "title": "Liquid glass / shimmer border patterns",
+          "url": "https://www.uistyleguide.com/style/liquid-glass",
+          "takeaways": [
+            "mask-composite border isolation",
+            "conic-gradient shimmer"
+          ]
+        }
       ]
-    },
-    "gradient_policy": {
-      "allowed": [
-        "Hero/landing section background only (max 20% viewport)",
-        "Decorative overlays (subtle, low saturation)",
-        "Never on text-heavy cards"
-      ],
-      "prohibited": [
-        "dark/saturated gradients (purple/pink, blue/purple, red/pink, green/blue)",
-        "gradients on small UI elements (<100px)",
-        "stacked gradients in same viewport"
-      ],
-      "enforcement": "If gradient area exceeds 20% of viewport OR impacts readability, fallback to solid colors."
     }
   },
 
   "typography": {
-    "google_fonts": {
-      "heading": {
-        "family": "Space Grotesk",
-        "weights": [500, 600, 700],
-        "usage": "Headings, counters, section titles"
-      },
-      "body": {
-        "family": "Inter",
-        "weights": [400, 500, 600],
-        "usage": "Body, UI labels, chat text"
-      }
-    },
-    "css_font_tokens": {
-      "--font-sans": "Inter, ui-sans-serif, system-ui",
-      "--font-display": "Space Grotesk, Inter, ui-sans-serif, system-ui"
+    "google_fonts_import": "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Figtree:wght@400;500;600&family=Roboto+Mono:wght@400;500;600&display=swap');",
+    "font_families": {
+      "display": "Montserrat, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+      "body": "Figtree, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+      "mono": "Roboto Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
     },
     "type_scale_tailwind": {
-      "h1": "text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight",
-      "h2": "text-base md:text-lg font-medium text-muted-foreground",
-      "h3": "text-lg font-semibold",
-      "body": "text-sm md:text-base leading-6",
-      "small": "text-xs text-muted-foreground"
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-display font-extrabold tracking-tight",
+      "h2": "text-base md:text-lg text-muted-foreground",
+      "h3": "text-xl sm:text-2xl font-display font-bold",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "small": "text-xs sm:text-sm text-muted-foreground",
+      "kpi_number": "font-mono tabular-nums text-2xl sm:text-3xl"
     },
-    "copy_rules": {
-      "tone": "Short sentences. One idea per line.",
-      "chat": "Prefer 1–2 sentence replies. Use bullets for lists.",
-      "whatsapp": "Outbound WhatsApp messages: max 3 buttons. Keep under ~280 chars when possible."
+    "copy_tone": {
+      "rules": [
+        "Short, directive sentences.",
+        "Use business language: 'Approve', 'Delegate', 'Due today', 'Overdue'.",
+        "Avoid slang; keep friendly but crisp.",
+        "Use ₹ formatting consistently."
+      ]
     }
   },
 
   "color_system": {
-    "notes": "Light background, white cards, charcoal text, ONE deep-teal accent. Status colors are fixed: amber due, red overdue, grey stuck, green done.",
-    "tokens_hsl_for_shadcn_index_css": {
-      "--background": "210 20% 98%",
-      "--foreground": "222 22% 14%",
+    "notes": [
+      "Theme via CSS variables (HSL) using shadcn conventions.",
+      "Dark is default: deep midnight blue with soft blue glows (logo-like).",
+      "Light: clean white with royal blue highlights + red accents.",
+      "No purple/pink gradients. Gradients only for hero/CTA/orb/decor (<20% viewport)."
+    ],
 
-      "--card": "0 0% 100%",
-      "--card-foreground": "222 22% 14%",
-
-      "--popover": "0 0% 100%",
-      "--popover-foreground": "222 22% 14%",
-
-      "--primary": "174 78% 24%",
-      "--primary-foreground": "0 0% 100%",
-
-      "--secondary": "210 16% 96%",
-      "--secondary-foreground": "222 22% 14%",
-
-      "--muted": "210 16% 96%",
-      "--muted-foreground": "215 16% 40%",
-
-      "--accent": "174 40% 92%",
-      "--accent-foreground": "174 78% 18%",
-
-      "--destructive": "0 72% 52%",
-      "--destructive-foreground": "0 0% 100%",
-
-      "--border": "214 18% 88%",
-      "--input": "214 18% 88%",
-      "--ring": "174 78% 24%",
-
-      "--radius": "0.9rem",
-
-      "--chart-1": "174 78% 24%",
-      "--chart-2": "38 92% 50%",
-      "--chart-3": "0 72% 52%",
-      "--chart-4": "215 16% 40%",
-      "--chart-5": "142 55% 36%"
+    "tokens_css": {
+      "paste_into": "/app/frontend/src/index.css (replace existing :root tokens; add .dark)",
+      "css": "@layer base {\n  :root {\n    /* Fonts */\n    --font-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;\n    --font-display: 'Montserrat', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;\n    --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;\n\n    /* Light theme — clean white + royal blue + red accents */\n    --background: 210 33% 99%;\n    --foreground: 222 35% 12%;\n\n    --card: 0 0% 100%;\n    --card-foreground: 222 35% 12%;\n\n    --popover: 0 0% 100%;\n    --popover-foreground: 222 35% 12%;\n\n    --primary: 224 100% 58%; /* royal blue */\n    --primary-foreground: 0 0% 100%;\n\n    --secondary: 220 22% 96%;\n    --secondary-foreground: 222 35% 12%;\n\n    --muted: 220 22% 96%;\n    --muted-foreground: 218 16% 42%;\n\n    --accent: 224 100% 96%;\n    --accent-foreground: 224 100% 32%;\n\n    --destructive: 356 92% 56%;\n    --destructive-foreground: 0 0% 100%;\n\n    --border: 220 18% 88%;\n    --input: 220 18% 88%;\n    --ring: 224 100% 58%;\n\n    --radius: 1rem;\n\n    /* Brand extras */\n    --brand-blue-1: 224 100% 58%; /* #0047FF-ish */\n    --brand-blue-2: 221 100% 46%; /* deeper */\n    --brand-navy-1: 224 78% 18%;\n    --brand-navy-2: 226 86% 12%;\n    --brand-red: 356 100% 58%;\n\n    /* Glass surfaces (light) */\n    --glass-bg: 0 0% 100% / 0.72;\n    --glass-border: 224 40% 40% / 0.14;\n    --glass-shadow: 224 40% 20% / 0.10;\n\n    /* Glow */\n    --glow-blue: 224 100% 60% / 0.22;\n    --glow-cyan: 198 100% 55% / 0.14;\n\n    /* Status */\n    --status-overdue: 8 86% 52%;\n    --status-due: 38 92% 50%;\n    --status-stuck: 220 10% 46%;\n    --status-done: 152 55% 38%;\n    --status-open: 224 100% 58%;\n    --status-pending: 38 92% 50%;\n    --status-decided: 152 55% 38%;\n\n    /* Charts */\n    --chart-1: 224 100% 58%;\n    --chart-2: 198 100% 45%;\n    --chart-3: 38 92% 50%;\n    --chart-4: 8 86% 52%;\n    --chart-5: 152 55% 38%;\n\n    /* Motion */\n    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);\n  }\n\n  .dark {\n    /* Dark theme — deep midnight blue + soft blue glows */\n    --background: 226 86% 8%;\n    --foreground: 210 40% 96%;\n\n    --card: 226 70% 10%;\n    --card-foreground: 210 40% 96%;\n\n    --popover: 226 70% 10%;\n    --popover-foreground: 210 40% 96%;\n\n    --primary: 224 100% 62%;\n    --primary-foreground: 0 0% 100%;\n\n    --secondary: 226 40% 14%;\n    --secondary-foreground: 210 40% 96%;\n\n    --muted: 226 40% 14%;\n    --muted-foreground: 218 18% 70%;\n\n    --accent: 224 60% 18%;\n    --accent-foreground: 210 40% 96%;\n\n    --destructive: 356 92% 60%;\n    --destructive-foreground: 0 0% 100%;\n\n    --border: 224 30% 22%;\n    --input: 224 30% 22%;\n    --ring: 224 100% 62%;\n\n    /* Brand extras */\n    --brand-blue-1: 224 100% 62%;\n    --brand-blue-2: 221 100% 50%;\n    --brand-navy-1: 226 86% 12%;\n    --brand-navy-2: 226 86% 8%;\n    --brand-red: 356 100% 60%;\n\n    /* Glass surfaces (dark) */\n    --glass-bg: 226 70% 10% / 0.62;\n    --glass-border: 210 40% 98% / 0.10;\n    --glass-shadow: 224 80% 30% / 0.18;\n\n    /* Glow */\n    --glow-blue: 224 100% 62% / 0.28;\n    --glow-cyan: 198 100% 55% / 0.18;\n\n    /* Status */\n    --status-overdue: 8 86% 58%;\n    --status-due: 38 92% 56%;\n    --status-stuck: 220 10% 62%;\n    --status-done: 152 55% 46%;\n    --status-open: 224 100% 62%;\n    --status-pending: 38 92% 56%;\n    --status-decided: 152 55% 46%;\n\n    /* Charts */\n    --chart-1: 224 100% 62%;\n    --chart-2: 198 100% 55%;\n    --chart-3: 38 92% 56%;\n    --chart-4: 8 86% 58%;\n    --chart-5: 152 55% 46%;\n  }\n}\n\n@layer base {\n  html, body {\n    font-family: var(--font-sans);\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n  }\n  h1, h2, h3, h4, .font-display {\n    font-family: var(--font-display);\n    letter-spacing: -0.015em;\n  }\n  code, pre, .font-mono {\n    font-family: var(--font-mono);\n  }\n  ::selection {\n    background: hsl(var(--brand-blue-1) / 0.22);\n    color: hsl(var(--foreground));\n  }\n}\n"
     },
-    "brand_hex_reference": {
-      "bg_canvas": "#F7FAFB",
-      "text_charcoal": "#1F2937",
-      "text_muted": "#5B6776",
-      "teal_primary": "#0F766E",
-      "teal_soft": "#D7F3EF",
-      "border": "#E3E8EF",
-      "status": {
-        "due_amber": "#F59E0B",
-        "overdue_red": "#EF4444",
-        "stuck_grey": "#6B7280",
-        "done_green": "#16A34A"
-      }
-    },
-    "status_usage": {
-      "due": "Amber pill + subtle amber dot. Never use amber as a background for long text.",
-      "overdue": "Red pill + red left border on cards.",
-      "stuck": "Grey pill + dashed border optional.",
-      "done": "Green pill + check icon."
+
+    "gradient_recipes": {
+      "allowed_usage": [
+        "Landing hero background only (<=20% viewport)",
+        "Primary CTA button background",
+        "KONNTO Orb layers",
+        "Small decorative accents (e.g., 1-2 corner glows)"
+      ],
+      "hero_bg_dark": "radial-gradient(900px circle at 20% 0%, hsl(224 100% 62% / 0.22), transparent 55%), radial-gradient(700px circle at 85% 10%, hsl(198 100% 55% / 0.14), transparent 52%), radial-gradient(900px circle at 50% 120%, hsl(356 100% 60% / 0.10), transparent 55%)",
+      "hero_bg_light": "radial-gradient(900px circle at 20% 0%, hsl(224 100% 58% / 0.14), transparent 55%), radial-gradient(700px circle at 85% 10%, hsl(198 100% 45% / 0.10), transparent 52%)",
+      "primary_button": "linear-gradient(135deg, hsl(224 100% 62%), hsl(221 100% 50%))"
     }
   },
 
-  "layout_and_grid": {
-    "app_shell": {
-      "mobile": {
-        "pattern": "Bottom tab bar (5 tabs). Chat is default.",
-        "top_bar": "Sticky top bar with business name + search + profile menu.",
-        "content_padding": "px-4 pt-3 pb-[calc(72px+env(safe-area-inset-bottom))]"
+  "layout": {
+    "grid_and_spacing": {
+      "app_shell": {
+        "desktop": "Left rail 280px (sticky), content max-w-[1200px] with 24px gutters; topbar 56px glass.",
+        "mobile": "Bottom tab bar height 68px + safe-area; content padding 16px; composer floats above tab bar."
       },
-      "desktop": {
-        "pattern": "Left rail + top bar. Content uses max-w with generous gutters.",
-        "rail_width": "w-[280px]",
-        "content_max": "max-w-[1120px]",
-        "page_padding": "px-6 py-6"
-      }
+      "spacing_rules": [
+        "Use 2–3x more whitespace than typical SaaS.",
+        "Cards: p-4 (mobile) / p-5 (desktop).",
+        "Section spacing: py-10 (mobile) / py-16 (desktop).",
+        "List rows: min-h 56px; touch targets >=44px."
+      ]
     },
-    "landing_page": {
-      "grid": "12-col on lg, single column on mobile",
-      "hero": "Split layout on lg: left copy + right product mock (chat screenshot). On mobile: copy then mock.",
-      "section_spacing": "py-14 md:py-20",
-      "card_radius": "rounded-[var(--radius)]",
-      "elevation": "Prefer borders over shadows; if needed use shadow-sm only."
+    "z_index_scale": {
+      "z_base": 0,
+      "z_header": 40,
+      "z_bottom_tabs": 45,
+      "z_sheet": 50,
+      "z_dialog": 60,
+      "z_toast": 70,
+      "z_tooltip": 80
     }
+  },
+
+  "texture_and_glass": {
+    "noise_overlay": {
+      "class": ".noise",
+      "opacity": "0.03–0.05 (3–5%)",
+      "notes": "Apply to large surfaces only (page backgrounds, hero). Avoid on dense text blocks."
+    },
+    "glass_recipe": {
+      "tailwind": "bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] shadow-[0_12px_40px_hsl(var(--glass-shadow))] backdrop-blur-[18px] backdrop-saturate-[140%]",
+      "fallback": "@supports not (backdrop-filter: blur(1px)) { use solid card background }",
+      "where": [
+        "Topbar",
+        "Bottom tab bar",
+        "Composer",
+        "Sheets/Dialogs/Dropdowns",
+        "Proposal cards (AI)"
+      ]
+    }
+  },
+
+  "motion": {
+    "principles": [
+      "No transition: all. Only transition colors/opacity/box-shadow/transform.",
+      "UI interactions: 150–250ms.",
+      "Looping animations only for orb/shimmer; keep subtle.",
+      "Respect prefers-reduced-motion: reduce loops to static gradients."
+    ],
+    "keyframes_css": {
+      "paste_into": "/app/frontend/src/index.css (below utilities)",
+      "css": "@property --shimmer-angle {\n  syntax: '<angle>';\n  inherits: true;\n  initial-value: 0deg;\n}\n\n@keyframes konnto-orb-float {\n  0%, 100% { transform: translateY(0); }\n  50% { transform: translateY(-6px); }\n}\n\n@keyframes konnto-orb-breathe {\n  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 hsl(var(--glow-blue))); }\n  50% { transform: scale(1.02); filter: drop-shadow(0 0 18px hsl(var(--glow-blue))); }\n}\n\n@keyframes konnto-orb-spin {\n  to { --shimmer-angle: 360deg; }\n}\n\n@keyframes konnto-typing {\n  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }\n  40% { opacity: 1; transform: translateY(-3px); }\n}\n\n@keyframes konnto-trail {\n  0% { opacity: 0; transform: translateX(-8px); }\n  30% { opacity: 1; }\n  100% { opacity: 0; transform: translateX(10px); }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .orb-animate, .shimmer-animate, .trail-animate { animation: none !important; }\n}\n"
+    },
+    "micro_interactions": {
+      "buttons": "hover: translateY(-1px) + glow; active: scale(0.98)",
+      "cards": "hover: border brightens + subtle lift",
+      "tabs": "active pill slides (transform only)",
+      "chat_streaming": "assistant bubble gets a faint animated shimmer seam"
+    }
+  },
+
+  "ai_orb": {
+    "definition": "KONNTO Orb is the AI presence: assistant avatar in chat, large in empty states/onboarding/landing hero.",
+    "states": [
+      {
+        "name": "idle",
+        "behavior": "slow breathe + float",
+        "duration": "6s breathe, 8s float"
+      },
+      {
+        "name": "thinking",
+        "behavior": "slightly faster breathe + subtle inner swirl",
+        "duration": "3.6s"
+      },
+      {
+        "name": "streaming",
+        "behavior": "conic shimmer rotates + outer ring pulses",
+        "duration": "1.6s"
+      }
+    ],
+    "css_recipe": {
+      "notes": "Use a div with pseudo-elements for layers. Keep size responsive via CSS vars.",
+      "css": ".konnto-orb {\n  --orb-size: 56px;\n  width: var(--orb-size);\n  height: var(--orb-size);\n  border-radius: 999px;\n  position: relative;\n  isolation: isolate;\n  background: radial-gradient(circle at 30% 25%, hsl(var(--brand-blue-1) / 0.95), transparent 55%),\n              radial-gradient(circle at 70% 75%, hsl(198 100% 55% / 0.55), transparent 60%),\n              radial-gradient(circle at 50% 50%, hsl(var(--brand-navy-1) / 1), hsl(var(--brand-navy-2) / 1));\n  box-shadow: 0 0 0 1px hsl(var(--glass-border)),\n              0 18px 60px hsl(var(--glow-blue)),\n              0 10px 30px hsl(var(--glow-cyan));\n}\n\n.konnto-orb::before {\n  content: '';\n  position: absolute;\n  inset: -1px;\n  border-radius: inherit;\n  background: conic-gradient(from var(--shimmer-angle),\n    transparent 0deg,\n    hsl(var(--brand-blue-1) / 0.55) 60deg,\n    transparent 120deg,\n    hsl(198 100% 55% / 0.35) 200deg,\n    transparent 260deg,\n    hsl(var(--brand-red) / 0.22) 320deg,\n    transparent 360deg\n  );\n  filter: blur(10px);\n  opacity: 0.55;\n  z-index: -1;\n}\n\n.konnto-orb::after {\n  content: '';\n  position: absolute;\n  inset: 10%;\n  border-radius: inherit;\n  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55), transparent 45%);\n  mix-blend-mode: overlay;\n  opacity: 0.55;\n}\n\n.konnto-orb.orb-animate {\n  animation: konnto-orb-breathe 6s var(--ease) infinite;\n}\n\n.konnto-orb.orb-float {\n  animation: konnto-orb-float 8s var(--ease) infinite;\n}\n\n.konnto-orb.orb-streaming::before {\n  animation: konnto-orb-spin 1.6s linear infinite;\n}\n",
+      "tailwind_wrapper": "relative rounded-full",
+      "sizes": {
+        "chat_avatar": "--orb-size: 40px",
+        "empty_state": "--orb-size: 96px",
+        "landing_hero": "--orb-size: 160px"
+      }
+    }
+  },
+
+  "shimmer_border": {
+    "use_cases": [
+      "AI proposal cards",
+      "Morning brief card",
+      "Onboarding highlight panels"
+    ],
+    "css": ".shimmer-border {\n  position: relative;\n  border-radius: calc(var(--radius) + 6px);\n}\n\n.shimmer-border::before {\n  content: '';\n  position: absolute;\n  inset: 0;\n  border-radius: inherit;\n  padding: 1px;\n  background: conic-gradient(from var(--shimmer-angle),\n    hsl(var(--brand-blue-1) / 0.0),\n    hsl(var(--brand-blue-1) / 0.55),\n    hsl(198 100% 55% / 0.35),\n    hsl(var(--brand-red) / 0.22),\n    hsl(var(--brand-blue-1) / 0.0)\n  );\n  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);\n  -webkit-mask-composite: xor;\n  mask-composite: exclude;\n  opacity: 0.9;\n}\n\n.shimmer-animate::before {\n  animation: konnto-orb-spin 3.2s linear infinite;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .shimmer-animate::before { animation: none; }\n}\n",
+    "notes": "Apply to a wrapper div; inner card stays readable (solid card bg)."
   },
 
   "components": {
     "component_path": {
       "button": "/app/frontend/src/components/ui/button.jsx",
       "card": "/app/frontend/src/components/ui/card.jsx",
-      "badge": "/app/frontend/src/components/ui/badge.jsx",
       "tabs": "/app/frontend/src/components/ui/tabs.jsx",
+      "badge": "/app/frontend/src/components/ui/badge.jsx",
       "sheet": "/app/frontend/src/components/ui/sheet.jsx",
-      "drawer": "/app/frontend/src/components/ui/drawer.jsx",
       "dialog": "/app/frontend/src/components/ui/dialog.jsx",
-      "dropdown_menu": "/app/frontend/src/components/ui/dropdown-menu.jsx",
+      "dropdown": "/app/frontend/src/components/ui/dropdown-menu.jsx",
       "input": "/app/frontend/src/components/ui/input.jsx",
       "textarea": "/app/frontend/src/components/ui/textarea.jsx",
-      "checkbox": "/app/frontend/src/components/ui/checkbox.jsx",
+      "select": "/app/frontend/src/components/ui/select.jsx",
+      "switch": "/app/frontend/src/components/ui/switch.jsx",
       "avatar": "/app/frontend/src/components/ui/avatar.jsx",
-      "scroll_area": "/app/frontend/src/components/ui/scroll-area.jsx",
-      "separator": "/app/frontend/src/components/ui/separator.jsx",
-      "command": "/app/frontend/src/components/ui/command.jsx",
-      "calendar": "/app/frontend/src/components/ui/calendar.jsx",
-      "sonner_toasts": "/app/frontend/src/components/ui/sonner.jsx"
+      "table": "/app/frontend/src/components/ui/table.jsx",
+      "skeleton": "/app/frontend/src/components/ui/skeleton.jsx",
+      "sonner_toast": "/app/frontend/src/components/ui/sonner.jsx",
+      "calendar": "/app/frontend/src/components/ui/calendar.jsx"
     },
 
-    "buttons": {
-      "shape": "Rounded (10–14px). Big, calm. No aggressive gradients.",
-      "sizes": {
-        "sm": "h-9 px-3 text-sm",
-        "md": "h-11 px-4 text-sm",
-        "lg": "h-12 px-5 text-base"
+    "tailwind_recipes": {
+      "buttons": {
+        "primary": "bg-[linear-gradient(135deg,hsl(var(--brand-blue-1)),hsl(var(--brand-blue-2)))] text-primary-foreground shadow-[0_10px_30px_hsl(var(--glow-blue))] hover:shadow-[0_14px_40px_hsl(var(--glow-blue))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-[transform,box-shadow,filter] duration-200 ease-[var(--ease)] active:scale-[0.98]",
+        "secondary_glass": "bg-[hsl(var(--glass-bg))] text-foreground border border-[hsl(var(--glass-border))] backdrop-blur-[18px] hover:border-[hsl(var(--brand-blue-1)/0.35)] transition-[transform,box-shadow,background-color,border-color] duration-200 ease-[var(--ease)] active:scale-[0.98]",
+        "ghost": "bg-transparent hover:bg-accent hover:text-accent-foreground transition-[background-color,color] duration-150",
+        "destructive": "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] hover:brightness-[1.05] transition-[filter,transform] duration-200 active:scale-[0.98]"
       },
-      "variants": {
-        "primary": "bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border",
-        "ghost": "hover:bg-accent hover:text-accent-foreground",
-        "destructive": "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      "inputs": {
+        "base": "bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] backdrop-blur-[14px] placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-[border-color,box-shadow] duration-200",
+        "textarea": "min-h-[96px] resize-none"
       },
-      "micro_interactions": {
-        "hover": "Only on pointer devices: subtle translate-y-[-1px] + shadow-sm",
-        "press": "active:translate-y-0 active:scale-[0.99]",
-        "loading": "Inline spinner left of label; keep label width stable"
+      "tabs_pill_segmented": {
+        "list": "inline-flex rounded-full bg-muted p-1",
+        "trigger": "rounded-full px-3 py-1.5 text-sm data-[state=active]:bg-[hsl(var(--glass-bg))] data-[state=active]:shadow-[0_10px_30px_hsl(var(--glass-shadow))] transition-[background-color,box-shadow,color] duration-200"
+      },
+      "cards": {
+        "base": "rounded-[calc(var(--radius)+6px)] bg-card text-card-foreground border border-border shadow-[0_10px_30px_hsl(var(--glass-shadow))]",
+        "glass": "rounded-[calc(var(--radius)+6px)] bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] backdrop-blur-[18px] shadow-[0_12px_40px_hsl(var(--glass-shadow))]"
+      },
+      "badges_status": {
+        "overdue": "bg-[hsl(var(--status-overdue)/0.14)] text-[hsl(var(--status-overdue))] border border-[hsl(var(--status-overdue)/0.22)]",
+        "due": "bg-[hsl(var(--status-due)/0.16)] text-[hsl(var(--status-due))] border border-[hsl(var(--status-due)/0.24)]",
+        "stuck": "bg-[hsl(var(--status-stuck)/0.14)] text-[hsl(var(--status-stuck))] border border-[hsl(var(--status-stuck)/0.22)]",
+        "done": "bg-[hsl(var(--status-done)/0.14)] text-[hsl(var(--status-done))] border border-[hsl(var(--status-done)/0.22)]",
+        "pending": "bg-[hsl(var(--status-pending)/0.16)] text-[hsl(var(--status-pending))] border border-[hsl(var(--status-pending)/0.24)]"
+      },
+      "kpi_tile": "rounded-2xl bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] backdrop-blur-[18px] p-4 shadow-[0_18px_60px_hsl(var(--glow-blue))]",
+      "list_row": "flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-accent transition-[background-color] duration-150",
+      "skeleton": "bg-[linear-gradient(90deg,hsl(var(--muted)),hsl(var(--accent)),hsl(var(--muted)))] bg-[length:200%_100%] animate-[shimmer_1.2s_linear_infinite]"
+    }
+  },
+
+  "chat_ui": {
+    "bubbles": {
+      "assistant": {
+        "container": "max-w-[88%] rounded-2xl rounded-tl-md bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] backdrop-blur-[18px] px-4 py-3 shadow-[0_12px_40px_hsl(var(--glass-shadow))]",
+        "seam": "before:content-[''] before:absolute before:left-0 before:top-3 before:bottom-3 before:w-[2px] before:rounded-full before:bg-[linear-gradient(180deg,hsl(var(--brand-blue-1)),hsl(198_100%_55%/0.0))]"
+      },
+      "user": {
+        "container": "max-w-[88%] rounded-2xl rounded-tr-md bg-[linear-gradient(135deg,hsl(var(--brand-blue-1)),hsl(var(--brand-blue-2)))] text-white px-4 py-3 shadow-[0_18px_60px_hsl(var(--glow-blue))]"
       }
     },
+    "composer": {
+      "wrapper": "fixed bottom-[calc(68px+env(safe-area-inset-bottom)+12px)] left-0 right-0 px-3",
+      "pill": "mx-auto max-w-[720px] rounded-full bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] backdrop-blur-[20px] shadow-[0_18px_60px_hsl(var(--glass-shadow))]",
+      "input": "bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
+      "attachments_strip": "flex gap-2 overflow-x-auto no-scrollbar px-3 pb-2"
+    },
+    "voice_recording_bar": {
+      "container": "rounded-2xl bg-[hsl(var(--glass-bg))] border border-[hsl(var(--glass-border))] backdrop-blur-[18px] p-3",
+      "rec_dot": "w-2.5 h-2.5 rounded-full bg-[hsl(var(--brand-red))] animate-[pulse_1s_ease-in-out_infinite]"
+    },
+    "proposal_card": {
+      "wrapper": "shimmer-border shimmer-animate",
+      "inner": "rounded-[calc(var(--radius)+6px)] bg-card/80 dark:bg-[hsl(var(--card)/0.72)] backdrop-blur-[18px] p-4",
+      "actions": "grid grid-cols-3 gap-2",
+      "action_buttons": "Use shadcn Button variants; ensure exactly 3 actions: Save/Edit/Skip; then Saved+Undo"
+    },
+    "typing_dots": {
+      "css": ".typing-dot{width:6px;height:6px;border-radius:999px;background:hsl(var(--brand-blue-1));display:inline-block;animation:konnto-typing 1.2s infinite ease-in-out}.typing-dot:nth-child(2){animation-delay:.15s}.typing-dot:nth-child(3){animation-delay:.3s}"
+    }
+  },
 
-    "chat": {
-      "chat_wall": {
-        "background": "Solid very-light canvas (no wallpaper). Optional 4% noise overlay.",
-        "container": "max-w-[760px] mx-auto px-4"
-      },
-      "bubble": {
-        "incoming": {
-          "classes": "bg-card text-foreground border border-border rounded-2xl rounded-tl-md px-3 py-2 shadow-[0_1px_0_rgba(16,24,40,0.04)]",
-          "meta": "timestamp + optional source chips below"
-        },
-        "outgoing": {
-          "classes": "bg-primary/10 text-foreground border border-primary/15 rounded-2xl rounded-tr-md px-3 py-2",
-          "meta": "timestamp right aligned"
-        },
-        "system_notice": {
-          "classes": "bg-secondary text-secondary-foreground border border-border rounded-xl px-3 py-2 text-xs"
-        }
-      },
-      "composer": {
-        "layout": "Sticky bottom. Left: attach. Center: textarea autosize. Right: mic + send.",
-        "classes": "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border px-3 py-2",
-        "textarea": "min-h-[44px] max-h-[140px] resize-none rounded-xl",
-        "voice_recording": {
-          "state": "When recording: show timer + red dot + Cancel button",
-          "timer_style": "font-medium tabular-nums"
-        }
-      },
-      "source_chips": {
-        "component": "Badge",
-        "classes": "bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-full",
-        "behavior": "Opens source in Sheet (mobile) / side panel (desktop)."
-      },
-      "proposal_cards": {
-        "component": "Card",
-        "layout": "Inline under KONNTO reply. Title + key fields + 3 buttons: Save / Edit / Skip.",
-        "classes": "border border-border rounded-2xl",
-        "buttons_rule": "In WhatsApp outbound: max 3 buttons. In-app proposal card: exactly 3 actions, never more.",
-        "save_state": "After Save: show compact confirmation row with Undo (ghost button)."
-      },
-      "empty_state": {
-        "pattern": "Centered vertically but content left-aligned within a max-w card.",
-        "suggestion_chips": "Use Badge as clickable chips (ghost/secondary)."
+  "page_blueprints": {
+    "landing": {
+      "hero_concept": {
+        "layout": "Z-pattern: left copy + CTA, right chat preview mock + orb. Mobile: stacked with orb above chat preview.",
+        "bg": "Use hero_bg_dark in dark mode; hero_bg_light in light mode; keep gradient area <=20% viewport.",
+        "sections": [
+          "Hero: headline + subhead + CTA (Try in WhatsApp / Open app)",
+          "How it works: 3 steps (Capture → Decide → Delegate)",
+          "WhatsApp-first: phone mock + consent note",
+          "Industries: retail/wholesale/construction/services cards",
+          "Trust: approvals + audit trail + privacy",
+          "Final CTA + footer"
+        ]
       }
     },
-
-    "status_pills": {
-      "base": "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border",
-      "variants": {
-        "due": "bg-amber-50 text-amber-800 border-amber-200",
-        "overdue": "bg-red-50 text-red-700 border-red-200",
-        "stuck": "bg-slate-50 text-slate-700 border-slate-200",
-        "done": "bg-emerald-50 text-emerald-700 border-emerald-200"
-      },
-      "icon": "lucide-react: Clock (due), AlertTriangle (overdue), PauseCircle (stuck), CheckCircle2 (done)"
+    "today_dashboard": {
+      "kpis": "4 KPI tiles in a 2x2 grid on mobile; 4x1 on desktop. Use mono numbers + status pills.",
+      "brief_card": "Morning brief uses shimmer-border wrapper; includes 'Play' (voice) + 'Send to WhatsApp' actions.",
+      "lists": "Overdue/Due lists as glass cards with list rows; show who’s waiting on whom as compact rows with avatars."
     },
-
-    "dashboard": {
-      "counters": {
-        "layout": "2x2 grid on mobile, 4-up on md+",
-        "component": "Card",
-        "counter_style": "text-2xl font-semibold font-display",
-        "label_style": "text-sm text-muted-foreground"
-      },
-      "who_waiting_on_whom": {
-        "component": "Card + Table or stacked rows",
-        "row": "Avatar + name + waiting-on + due pill"
-      },
-      "morning_brief": {
-        "component": "Card",
-        "style": "Left border in primary/30 + concise bullets"
-      }
+    "work": {
+      "filters": "Top segmented tabs (Open/Stuck/Done) + kind Select + Mine Switch + Search Input.",
+      "detail": "Use Sheet (right side on desktop, bottom on mobile) with timeline + status buttons (Done/Delayed/Stuck)."
     },
-
-    "work_list": {
-      "filters": {
-        "component": "Tabs + Select",
-        "pattern": "Sticky filter bar under top bar on mobile"
-      },
-      "rows": {
-        "component": "Card (flat row) or button-like row",
-        "row_classes": "flex items-start gap-3 rounded-2xl border border-border bg-card px-3 py-3 hover:bg-accent/40",
-        "left": "Status dot + title",
-        "right": "Assignee avatar + due date + status pill"
-      },
-      "detail": {
-        "component": "Sheet (mobile) / side panel (desktop)",
-        "timeline": "Use Separator + stacked events; keep timestamps tabular-nums",
-        "status_change": "Buttons: Done, Delayed, Stuck. Delayed/Stuck require reason textarea."
-      }
-    },
-
     "team": {
-      "members_list": "Card rows with Avatar + role + access chips + WhatsApp status",
-      "add_person": "Dialog with Input + Select role + Checkbox permissions",
-      "threads": "WhatsApp-like thread view using same chat bubble system"
+      "rows": "Avatar + name + role + pills (App/WhatsApp). Use subtle hover highlight.",
+      "invite_dialog": "Dialog with invite link Input + Copy button + QR optional.",
+      "access_sheet": "Sheet with Checkbox list for permissions."
     },
-
     "approvals": {
-      "card": {
-        "component": "Card",
-        "layout": "Request summary + context + 3 actions: Allow once / Always allow / Don’t allow",
-        "classes": "rounded-2xl border border-border",
-        "always_allow_money": "If money: show Input for ‘under amount’ inline before confirm"
-      },
-      "reply_in_words": "Textarea under actions; keep short placeholder examples"
+      "cards": "Approval card with amount in mono, status pill, and 3 decision buttons: Allow once / Always under ₹X / Don’t allow.",
+      "decided_tab": "Tabs with Decided; show Undo as ghost button."
     },
-
-    "search": {
-      "component": "Command",
-      "pattern": "Global search opens Command dialog; results grouped: Work, People, Docs, Rules"
-    },
-
     "documents": {
-      "upload": "Use Button + Input type=file hidden; show progress",
-      "detail": "Sheet with AI summary (bullets) + key details as definition list"
+      "upload": "Dropzone card (glass) with dashed border; show progress.",
+      "detail_sheet": "Sheet with AI summary + found items list; highlight found items with subtle blue left border."
     },
-
+    "business_brain": {
+      "facts_rules": "Two-column on desktop, stacked on mobile. Each item is a compact card with edit actions."
+    },
+    "settings_privacy_help": {
+      "pattern": "Form sections as cards; use Switch for toggles; destructive actions in AlertDialog with red accent."
+    },
     "admin_console": {
-      "tone": "Desktop-first, denser tables, still calm.",
-      "teach_ai": "Tabs: Draft vs Published. Version history table with Restore button.",
-      "website_editor": "Form fields in Card sections; Preview panel on right on xl",
-      "customers": "Table + usage charts (Recharts)"
+      "tone": "More restrained: fewer glows, more solid surfaces; keep brand blue for focus + selection.",
+      "tables": "Use shadcn Table with sticky header; row hover uses accent background."
     }
   },
 
-  "motion_and_microinteractions": {
-    "library": "framer-motion (already available)",
-    "principles": [
-      "Motion is functional: confirm actions, show state changes, guide attention.",
-      "Keep durations short and easing soft.",
-      "Respect prefers-reduced-motion."
-    ],
-    "tokens": {
-      "duration_fast_ms": 120,
-      "duration_base_ms": 180,
-      "duration_slow_ms": 240,
-      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
-    },
-    "patterns": {
-      "message_in": "Fade + slight rise (y: 6 -> 0) for new bubbles",
-      "proposal_card": "Expand/collapse with height auto animation",
-      "save_confirmation": "Slide-in toast (sonner) + inline Undo row",
-      "tab_switch": "No page fade; keep instant with subtle underline motion"
-    }
-  },
-
-  "textures_and_background": {
-    "noise": {
-      "usage": "Optional subtle noise overlay on app canvas and landing hero only.",
-      "css_snippet": ".noise::before { content: \"\"; position: absolute; inset: 0; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"120\"><filter id=\"n\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.9\" numOctaves=\"2\" stitchTiles=\"stitch\"/></filter><rect width=\"120\" height=\"120\" filter=\"url(%23n)\" opacity=\"0.06\"/></svg>'); pointer-events: none; mix-blend-mode: multiply; }"
-    },
-    "hero_gradient": {
-      "allowed_example": "bg-[radial-gradient(1200px_circle_at_20%_10%,rgba(15,118,110,0.10),transparent_55%),radial-gradient(900px_circle_at_80%_0%,rgba(15,118,110,0.06),transparent_50%)]",
-      "note": "This stays subtle and within the hero only."
-    }
-  },
-
-  "landing_page_layout": {
-    "header": {
-      "left": "KONNTO wordmark",
-      "right": "Nav: How it works, Security, Help, Sign in + primary CTA Start free",
-      "mobile": "Hamburger opens Sheet with same links"
-    },
-    "hero": {
-      "headline": "Talk to KONNTO. It remembers. It acts.",
-      "subhead": "Send a message on WhatsApp or in the app. KONNTO turns it into tasks, promises, reminders — and follows up.",
-      "ctas": [
-        "Start free (primary)",
-        "See how it works (secondary)"
-      ],
-      "proof_row": "3 small items: WhatsApp-first • Source links • One-tap Save",
-      "visual": "Product mock: chat + proposal card + approval card"
-    },
-    "how_it_works": {
-      "steps": [
-        "Talk",
-        "K-BRAIN thinks",
-        "It acts"
-      ],
-      "component": "3 cards with icons + 2 lines each"
-    },
-    "whatsapp_first": {
-      "content": "Explain short WhatsApp messages + 3-button limit",
-      "example": "Show a WhatsApp-style message preview card"
-    },
-    "for_any_business": {
-      "layout": "Bento grid of industries (Retail, Services, Logistics, Clinics, Agencies, Manufacturing)",
-      "note": "No pricing. Focus on outcomes."
-    },
-    "security_trust": {
-      "cards": "Data privacy, permissions, audit trail, export/delete data"
-    },
-    "final_cta": {
-      "headline": "Start with one number.",
-      "cta": "Start free",
-      "support": "Secondary link: Talk to KONNTO (opens help chat)"
-    },
-    "footer": {
-      "links": ["Terms", "Privacy", "Help"],
-      "note": "No pricing links in public footer."
-    }
-  },
-
-  "auth_and_onboarding": {
-    "clerk": {
-      "layout": "Centered column. Optional brand side panel visible on lg+ only.",
-      "side_panel": "Quiet gradient-less panel with 2 bullets + small product mock.",
-      "data_testid": {
-        "signin": "auth-signin",
-        "signup": "auth-signup"
-      }
-    },
-    "whatsapp_continue": {
-      "page": "Phone input + 6-digit OTP (use shadcn input-otp)",
-      "components": ["Input", "InputOTP", "Button"],
-      "data_testid_examples": [
-        "whatsapp-auth-phone-input",
-        "whatsapp-auth-send-code-button",
-        "whatsapp-auth-otp-input",
-        "whatsapp-auth-verify-button"
-      ]
-    },
-    "onboarding_one_question": {
-      "question": "What’s your WhatsApp number?",
-      "consent": "Checkbox: I agree to receive WhatsApp messages from KONNTO for this business.",
-      "cta": "Continue",
-      "note": "No tutorials. After submit, open Chat."
-    }
-  },
-
-  "libraries_and_integrations": {
-    "icons": "lucide-react (already installed)",
-    "toasts": "sonner via /app/frontend/src/components/ui/sonner.jsx",
-    "charts": {
-      "library": "recharts",
-      "use_cases": ["Admin console usage charts", "Dashboard trends (optional)"]
-    },
-    "installation_if_missing": {
-      "recharts": "npm i recharts",
-      "framer_motion": "npm i framer-motion"
+  "clerk_appearance": {
+    "notes": "Set Clerk appearance variables to match tokens for both themes (background, text, primary). Keep inputs glassy in dark, clean in light.",
+    "suggested_vars": {
+      "colorPrimary": "hsl(var(--primary))",
+      "colorBackground": "hsl(var(--background))",
+      "colorText": "hsl(var(--foreground))",
+      "colorInputBackground": "hsl(var(--glass-bg))",
+      "colorInputText": "hsl(var(--foreground))"
     }
   },
 
   "image_urls": {
-    "landing_hero_photography": [
+    "landing_hero_orb_art": [
       {
-        "url": "https://images.unsplash.com/photo-1659080548656-3c3ffb870950?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwxfHxjYWxtJTIwYnVzaW5lc3MlMjBvd25lciUyMHVzaW5nJTIwcGhvbmUlMjBtZXNzYWdpbmclMjBhcHAlMjBsaWdodCUyMGJhY2tncm91bmR8ZW58MHx8fHRlYWx8MTc5NDU3NTQ0NHww&ixlib=rb-4.1.0&q=85",
+        "url": "https://images.unsplash.com/photo-1653299832314-5d3dc1e5a83c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGJsdWUlMjBncmFkaWVudCUyMG9yYiUyMDNkJTIwcmVuZGVyfGVufDB8fHxibHVlfDE3OTQ1OTExOTN8MA&ixlib=rb-4.1.0&q=85",
         "category": "landing",
-        "placement": "Hero side image (optional) or testimonial strip",
-        "description": "Phone-first business owner vibe; calm, modern"
-      },
+        "description": "Abstract blue 3D orb render for hero side visual / background card"
+      }
+    ],
+    "smb_owner": [
       {
-        "url": "https://images.unsplash.com/photo-1649767821633-f0d6a8c28b51?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwyfHxjYWxtJTIwYnVzaW5lc3MlMjBvd25lciUyMHVzaW5nJTIwcGhvbmUlMjBtZXNzYWdpbmclMjBhcHAlMjBsaWdodCUyMGJhY2tncm91bmR8ZW58MHx8fHRlYWx8MTc5NDU3NTQ0NHww&ixlib=rb-4.1.0&q=85",
+        "url": "https://images.unsplash.com/photo-1792563739121-461a15147254?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxzbWFsbCUyMGJ1c2luZXNzJTIwb3duZXIlMjBpbmRpYSUyMHNob3AlMjBzbWFydHBob25lfGVufDB8fHx8MTc5NDU5MTE4N3ww&ixlib=rb-4.1.0&q=85",
         "category": "landing",
-        "placement": "Use in ‘For any business’ section as subtle human proof",
-        "description": "Friendly, global SMB feel"
+        "description": "India-first SMB vibe image for industries/trust section"
+      }
+    ],
+    "team_collaboration": [
+      {
+        "url": "https://images.unsplash.com/flagged/photo-1576485436509-a7d286952b65?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwxfHx0ZWFtJTIwY29sbGFib3JhdGlvbiUyMG9mZmljZSUyMGluZGlhJTIwc21hcnRwaG9uZXxlbnwwfHx8fDE3OTQ1OTExOTB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "landing",
+        "description": "Team meeting image for Team/Delegation section"
       }
     ]
   },
 
-  "instructions_to_main_agent": {
-    "css_updates": [
-      "Replace default shadcn tokens in /app/frontend/src/index.css with the HSL tokens above.",
-      "Remove CRA starter styles in /app/frontend/src/App.css (dark centered header). Ensure no .App { text-align:center } is introduced.",
-      "Add font imports in public/index.html or via CSS @import; set body font to var(--font-sans) and headings to var(--font-display)."
-    ],
-    "component_build_notes_js": [
-      "This repo uses .jsx (not .tsx). Keep components in .jsx and use prop-types only if project already uses it.",
-      "Use shadcn/ui primitives from /src/components/ui for dropdowns, dialogs, sheets, calendar, etc. Do not use raw HTML equivalents.",
-      "Every interactive element must include data-testid."
-    ],
-    "chat_priority": [
-      "Chat is home. Make Chat route default after onboarding.",
-      "Proposal cards must always show exactly 3 actions: Save / Edit / Skip.",
-      "After Save, show inline Undo + sonner toast confirmation."
-    ],
-    "accessibility": [
-      "Ensure focus-visible rings are teal and clearly visible.",
-      "Use aria-labels for icon-only buttons (mic, attach, send).",
-      "Maintain WCAG AA contrast for status pills and links."
+  "accessibility": {
+    "requirements": [
+      "WCAG AA contrast in both themes.",
+      "Focus-visible ring: 2px brand blue with offset.",
+      "Touch targets >=44px.",
+      "prefers-reduced-motion: disable orb/shimmer loops."
     ]
-  }
+  },
+
+  "instructions_to_main_agent": [
+    "VISUAL REDESIGN ONLY: do not change functionality.",
+    "Replace existing teal tokens in /app/frontend/src/index.css with the provided token set and add .dark tokens. Dark should be default (html has class 'dark' initially).",
+    "Add Google Fonts import at top of index.css (Montserrat + Figtree + Roboto Mono).",
+    "Implement theme toggle (Sun/Moon icons from lucide-react) in public nav, app topbar, admin topbar. Toggle by adding/removing 'dark' class on <html>.",
+    "Create a reusable KONNTOLogo component as inline SVG (JS) and a KonntoOrb component (JS) using the CSS classes above.",
+    "Apply glass recipe to overlays: Sheet/Dialog/Dropdown/Topbar/Bottom tabs/Composer.",
+    "Implement shimmer-border utility class for AI proposal cards + brief card; ensure reduced-motion fallback.",
+    "Chat: assistant bubble glass with seam; user bubble blue gradient; composer floating glass pill; typing dots use konnto-typing keyframes.",
+    "Status pills: use Badge with status classes for overdue/due/stuck/done/pending.",
+    "Ensure every interactive + key informational element keeps/has data-testid attributes (kebab-case).",
+    "Do not use transition: all anywhere."
+  ]
 }
+
+---
 
 <General UI UX Design Guidelines>  
     - You must **not** apply universal transition. Eg: `transition: all`. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms

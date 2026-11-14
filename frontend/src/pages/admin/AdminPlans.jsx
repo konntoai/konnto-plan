@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,7 +35,7 @@ export default function AdminPlans() {
   const archive = async (id) => { if (!window.confirm("Archive this plan?")) return; try { await api.del(`/admin/plans/${id}`); toast.success("Archived"); load(); } catch (e) { toast.error(e.message); } };
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1100px] mx-auto">
+    <div className="p-4 lg:p-8 max-w-[1100px] mx-auto">
       <PageHeader title="Plans" subtitle="Internal — never shown to customers.">
         <Button onClick={() => openEdit(null)} data-testid="plan-new"><Plus className="h-4 w-4 mr-1" /> New plan</Button>
       </PageHeader>
@@ -71,8 +72,7 @@ export default function AdminPlans() {
                 <Input type="number" placeholder="Price" value={edit.price ?? ""} onChange={(e) => setEdit({ ...edit, price: e.target.value === "" ? null : Number(e.target.value) })} data-testid="plan-price" />
                 <Input placeholder="Currency" value={edit.currency} onChange={(e) => setEdit({ ...edit, currency: e.target.value })} data-testid="plan-currency" />
               </div>
-              <Input placeholder="Features (one per line)" />
-              <textarea className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="One feature per line" value={featuresText} onChange={(e) => setFeaturesText(e.target.value)} data-testid="plan-features" />
+              <Textarea rows={4} placeholder="Features — one per line" value={featuresText} onChange={(e) => setFeaturesText(e.target.value)} data-testid="plan-features" />
               <label className="flex items-center gap-2 text-sm"><Checkbox checked={edit.visible} onCheckedChange={(v) => setEdit({ ...edit, visible: Boolean(v) })} data-testid="plan-visible" /> Visible to customers (we recommend keeping this off)</label>
             </div>
           )}

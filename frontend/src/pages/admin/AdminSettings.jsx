@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Loader2, Save, Copy, Phone, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PageHeader, SectionCard } from "@/components/common";
+import { PageHeader, SectionCard, TonePill } from "@/components/common";
 import { useApi } from "@/lib/api";
 
 export default function AdminSettings() {
@@ -30,7 +30,7 @@ export default function AdminSettings() {
   if (!data) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
-    <div className="p-4 lg:p-6 max-w-[900px] mx-auto space-y-4">
+    <div className="p-4 lg:p-8 max-w-[900px] mx-auto space-y-4">
       <PageHeader title="Settings" subtitle="Platform-wide defaults and WhatsApp status.">
         <Button onClick={save} disabled={busy} data-testid="admin-settings-save"><Save className="h-4 w-4 mr-1" /> {busy ? "Saving…" : "Save"}</Button>
       </PageHeader>
@@ -43,8 +43,8 @@ export default function AdminSettings() {
       <SectionCard title="WhatsApp Business API" testid="admin-wa-card">
         <div className="flex items-center gap-2 text-sm">
           {data.whatsapp.configured
-            ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 text-xs"><Check className="h-3.5 w-3.5" /> Connected</span>
-            : <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 text-xs"><X className="h-3.5 w-3.5" /> Not connected</span>}
+            ? <TonePill tone="done" icon={Check}>Connected</TonePill>
+            : <TonePill tone="due" icon={X}>Not connected</TonePill>}
           <span className="text-muted-foreground"><Phone className="h-3.5 w-3.5 inline mr-1" /> {data.whatsapp.display_number || "No number set"}</span>
         </div>
         <div className="mt-3 space-y-2 text-sm">

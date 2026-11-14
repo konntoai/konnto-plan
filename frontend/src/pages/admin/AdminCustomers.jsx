@@ -31,12 +31,12 @@ export default function AdminCustomers() {
   };
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1200px] mx-auto space-y-5">
+    <div className="p-4 lg:p-8 max-w-[1200px] mx-auto space-y-5">
       <PageHeader title="Customers" subtitle="Who’s using KONNTO, how much, and their monthly limits." />
       {usage && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[["Businesses", usage.totals.orgs], ["People", usage.totals.members], ["AI messages (30d)", usage.totals.ai_messages], ["AI cost (30d)", `$${usage.totals.ai_cost}`]].map(([l, v]) => (
-            <div key={l} className="rounded-2xl border border-border bg-card p-4" data-testid={`admin-stat-${l.replace(/\s/g, "-").toLowerCase()}`}>
+            <div key={l} className="rounded-3xl surface p-4 sm:p-5" data-testid={`admin-stat-${l.replace(/\s/g, "-").toLowerCase()}`}>
               <div className="text-xs text-muted-foreground">{l}</div><div className="text-2xl font-semibold font-display mt-1">{v}</div>
             </div>
           ))}

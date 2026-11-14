@@ -150,22 +150,24 @@ async def seed_demo_org(org: dict, owner_member: dict) -> dict:
         }
         await db.items.insert_one(dict(item))
 
-    # ---- A pending approval from Ramesh ----
-    ap = {
-        "approval_id": new_id("apr"),
-        "org_id": org["org_id"],
-        "kind": "expense",
-        "title": f"Buy a replacement drill for the shop",
-        "details": "The old one broke yesterday. This model is well reviewed and still within last quarter's budget.",
-        "requested_by": ramesh["member_id"],
-        "requested_by_name": ramesh["name"],
-        "amount": 8500,
-        "currency": ccy,
-        "status": "pending",
-        "source": {"type": "demo_seed"},
-        "created_at": iso(ref - timedelta(hours=4)),
-    }
-    await db.approvals.insert_one(dict(ap))
+    # ---- Pending approvals (varied amounts + requesters so K-BRAIN can prioritise) ----
+    approvals_to_create = [
+        {"kind": "payment", "title": "Advance to Gupta Cement for the Mehta Builders order",
+         "details": "Gupta wants 50% upfront to lock this week's rate before the price rise on Monday. Mehta's order depends on it.",
+         "by": priya, "amount": 42000, "hours": 20},
+        {"kind": "expense", "title": "Buy a replacement drill for the shop",
+         "details": "The old one broke yesterday. This model is well reviewed and still within last quarter's budget.",
+         "by": ramesh, "amount": 8500, "hours": 4},
+        {"kind": "payment", "title": "Refund for damaged bags — Sharma Hardware",
+         "details": "6 bags arrived torn. Customer is waiting on a call-back before they place next month's order.",
+         "by": priya, "amount": 6800, "hours": 30},
+    ]
+    for a in approvals_to_create:
+        await db.approvals.insert_one({
+            "approval_id": new_id("apr"), "org_id": org["org_id"], "kind": a["kind"], "title": a["title"], "details": a["details"],
+            "requested_by": a["by"]["member_id"], "requested_by_name": a["by"]["name"], "amount": a["amount"], "currency": ccy,
+            "status": "pending", "source": {"type": "demo_seed"}, "created_at": iso(ref - timedelta(hours=a["hours"])),
+        })
 
     # ---- A direct thread with Priya ----
     thread = await engine.get_or_create_direct_thread(org["org_id"], owner_member, priya)
@@ -197,6 +199,7 @@ async def seed_demo_org(org: dict, owner_member: dict) -> dict:
         "Our wholesale margin on cement is usually 8–12%.",
         "Deliveries from Gupta Cement always come in the afternoon slot.",
         "The warehouse is closed every Sunday.",
+        "Cash on hand is about 24.1 lakh this week (owner's estimate, demo figure).",
     ]:
         await db.knowledge.insert_one({
             "fact_id": new_id("fct"),
@@ -213,7 +216,7 @@ async def seed_demo_org(org: dict, owner_member: dict) -> dict:
         f"Good morning. Here's what matters today for {org['name']}:",
         "• 1 task is overdue — Mehta Builders quote. Who's picking it up?",
         "• 1 task is due today — Review the new price list.",
-        "• 1 approval is waiting — Ramesh wants a new drill (₹8,500).",
+        "• 3 approvals are waiting — the Gupta Cement advance is the time-sensitive one.",
         "Reply with anything you want to talk through — I'll keep up.",
     ]
     await db.brain_messages.insert_one({
@@ -230,4 +233,4 @@ async def seed_demo_org(org: dict, owner_member: dict) -> dict:
     })
 
     return {"seeded": True, "people": len(created_people), "items": len(items_to_create),
-            "approvals": 1, "threads": 1, "project_id": proj_id}
+            "approvals": len(approvals_to_create), "threads": 1, "project_id": proj_id}

@@ -5,11 +5,13 @@
 ### Status update
 - **Phase 1 MVP is complete.** Backend is implemented and verified; frontend is fully built and wired.
 - **Testing:** Backend passed **24/24 tests (100%)**. Frontend smoke + navigation verification passed. Core integrations verified end-to-end.
+- **Visual redesign (“AI feel”) is in progress.** The new design foundations are in place (tokens + dark/light toggle + brand components), and bulk page rewrites are underway.
+- **Frontend compilation:** Latest redesign batch compiles cleanly (`npx esbuild src/ --bundle --outfile=/dev/null` ✅).
 
 ### Current objectives (post-MVP)
-- Keep the Phase 1 MVP stable and production-ready.
-- Ensure graceful behavior when WhatsApp is not configured (current environment uses placeholders): **in-app + email fallback** remain the primary channels.
-- Optional: improve polish (UX hardening, optimistic UI, global search, deeper UI interaction tests) before broader rollout.
+1. Keep Phase 1 MVP stable and production-ready.
+2. Deliver the **premium, futuristic AI-native UI** (dark default + light mode toggle) across public + app + admin pages.
+3. Upgrade KONNTO’s **conversation quality** to match the user’s previous K-BRAIN experience: decisive, context-aware, proactive but controlled, and capable of turning operational instructions into confirmable actions.
 
 ---
 
@@ -44,7 +46,7 @@ Built the full UI in one pass using shadcn/ui and `/app/design_guidelines.md`.
 2. As a user, I can view my Work list, filter by state, and update status with a reason when required. ✅
 3. As an owner, I can manage Team members (invite, view access, remove) and start a direct thread. ✅
 4. As an approver, I can review approvals quickly and respond with one tap (or in words). ✅
-5. As an admin, I can edit Brain draft, test it, publish it, and see version history. ✅ (wired)
+5. As an admin, I can edit Brain draft, test it, publish it, and see version history. ✅
 
 **Completed steps**
 1. **Created all missing frontend files referenced in `App.js`** ✅
@@ -163,11 +165,187 @@ This phase is now **optional** and focuses on usability and long-term stability.
 
 ---
 
+### Phase 4 — Complete Visual Redesign (“AI feel”) 🔄 IN PROGRESS
+A full **visual overhaul** across **all pages** (public + app + admin) to match the KONNTO brand and feel like a modern AI product.
+
+**Brand inputs (provided by user)**
+- Use KONNTO logo (royal blue gradient background, white wordmark, red chevron mark).
+- **Logo asset URL (reference):**
+  - https://customer-assets-lqy194kg.emergentagent.net/job_konnto-plan--87psd4r7/artifacts/fa88f4351d22efae_KONNTO%20Logo%20on%20Blue%20Gradient.png
+- Recreate the mark as a **crisp SVG component** for all backgrounds and sizes.
+
+**User choices**
+- Theme support: **BOTH dark + light** with a **toggle**
+  - Dark (default): midnight blue + soft blue glows
+  - Light: white surfaces + royal blue highlights + red accents
+- Motion: combine
+  - **Subtle + premium** (default): gentle glows, soft pulsing KONNTO orb, smooth fades
+  - **Bold + futuristic** (accent moments): animated gradient orb, shimmer borders, light trails
+- Respect `prefers-reduced-motion`.
+
+**Scope constraints**
+- **Do not change any functionality.** Keep API wiring, behavior, routes, and `data-testid` attributes intact.
+- Only visuals: design tokens, components, layout polish, animation, iconography and branding.
+
+**User stories (Redesign)**
+1. As a user, the product instantly feels like a premium AI assistant (not a generic SaaS dashboard).
+2. As a user, I can switch between dark/light instantly, and the UI remains readable and accessible.
+3. As a user with reduced-motion enabled, the app remains elegant without motion overload.
+4. As a user, the Chat experience feels “alive” (AI presence) while other screens remain calm.
+
+**Implementation steps**
+1. **Design exploration** (design_agent) ✅
+   - Extract brand palette from logo: primary royal blues + accent red + neutrals.
+   - Define: background gradients, surface hierarchy, border treatments, typography rules.
+
+2. **Token + theme system rebuild** ✅
+   - Updated `index.css` + Tailwind CSS variables for Dark/Light palettes.
+   - Ensured shadcn primitives inherit tokens.
+
+3. **Theme Provider + Toggle** ✅
+   - Added theme provider (via `next-themes`) and a topbar toggle.
+   - Prevented FOUC by defaulting `<html class="dark">`.
+
+4. **Brand components** ✅
+   - Added `Logo.jsx` and `KonntoOrb.jsx` under `/app/frontend/src/components/brand/` and wired into core UI.
+
+5. **Restyle layouts (no behavior changes)** 🔄
+   - AppShell + Chat redesigned with glassmorphism + AI orb presence. ✅
+   - Remaining pages being rewritten to new tokens/components. 🔄
+
+6. **Motion system** ✅/🔄
+   - Orb + streaming presence animations implemented.
+   - Continue verifying motion consistency across pages; respect `prefers-reduced-motion`. 🔄
+
+7. **Compile + screenshots + review** 🔄
+   - Compilation check complete (esbuild) ✅
+   - Pending: screenshot sweep across both themes for public/app/admin pages. 🔄
+
+8. **Regression testing** 🔄
+   - Pending: rerun `testing_agent_v3` after final page rewrites + screenshot sign-off. 🔄
+
+---
+
+### Phase 5 — “K-BRAIN Conversational Upgrade” ✅ COMPLETED (testing iteration_2: backend 11/11, frontend 7/7)
+Upgrade KONNTO AI to speak and behave like the user’s previous K-BRAIN (chief-of-staff / CEO-level assistant vibe).
+
+**Goal (from user reference screenshots/videos)**
+KONNTO should:
+- Address the user by first name when appropriate.
+- Pull **live state** (pending approvals with amounts + who raised them; open work highlights).
+- Prioritize with judgment (“what actually needs a decision from you today”).
+- Be proactive but controlled: volunteer **1–2 extra signals that matter**.
+- Close with a crisp next action (“tell me which ones to approve and I’ll queue them up”).
+- Respond with **empathy** for personal situations.
+- Turn operational instructions (handover/delegation/temporary restrictions) into a **confirmable ‘K-BRAIN PROPOSES’** card.
+
+**User stories (Conversational upgrade)**
+1. As an owner, when I ask “what needs my attention today?”, I get a prioritized, decision-oriented rundown (not generic advice).
+2. As a user, I can choose a conversation style (Chief of Staff / Executive Assistant / Senior Advisor / Sharp Operator) and KONNTO adapts.
+3. As a user, when I give an instruction like “Ask Priya to manage today, no financial decisions”, KONNTO drafts a message + a temporary rule and asks me to confirm.
+4. As an owner, after I confirm, KONNTO actually sends the message, logs it, and enforces the temporary restriction until it expires.
+5. As a user, I can reset/clean the chat session if needed without losing business data.
+
+**Backend implementation (planned changes)**
+1. **Personas**
+   - Add a PERSONAS map in `backend/brain.py`.
+   - Add a member-level persona setting (stored on member, default **Chief of Staff**).
+   - Allow inline change via chat (interpreted as an action), and via explicit endpoint.
+
+2. **Live-state reply system**
+   - Extend `reply_system()` to include a **LIVE STATE** block:
+     - Pending approvals summary (amounts + requester + short reason)
+     - Open items highlights (overdue/due/stuck)
+     - Rules currently in effect (especially temporary restrictions)
+   - Preserve existing safety rules: never invent figures; cite sources when used; never claim something is completed.
+
+3. **New analysis actions**
+   - Extend analysis tool schema to support:
+     - `set_persona` action
+     - `handover` action (delegate authority for today; include restrictions like “no financial decisions”)
+
+4. **Handover proposal card + lifecycle**
+   - Add a new card type (e.g. `handover`) generated by engine:
+     - Card shows drafted instruction + proposed restrictions + expiry.
+     - Actions: **Confirm / Dismiss** (distinct from Save/Skip/Undo proposal cards).
+   - On confirm:
+     - Send message to the target person (via direct thread/in-app; WhatsApp/email fallback as applicable).
+     - Create a temporary behaviour rule / restriction that **expires end of local day**.
+     - Write an audit log entry.
+   - On dismiss: no action taken.
+
+5. **Temporary rule expiry**
+   - Ensure expired rules are filtered out when applying behaviour rules.
+
+6. **New routes**
+   - Extend card ops to support confirm/dismiss for relevant cards.
+   - Add `PUT /api/me/brain-persona` (or similar) to set persona.
+   - Add `POST /api/chat/reset` to archive/soft-reset chat history for the current member.
+
+7. **Seed updates for realistic “CEO assistant” responses**
+   - Add a “cash on hand” fact into seed knowledge so the assistant can reference it (with citations) when giving sequencing advice.
+
+**Frontend implementation (planned changes)**
+1. **Shared chat engine**
+   - Introduce `useBrainChat` hook to reuse streaming logic for:
+     - `/app/chat`
+     - floating K-BRAIN panel
+
+2. **Floating K-BRAIN Panel**
+   - A glassmorphism overlay panel available on every app page except `/app/chat`:
+     - Collapsed pill composer
+     - Expanded panel header: **“K-BRAIN · KONNTO INTELLIGENCE LAYER”**
+     - Persona picker (dropdown)
+     - Expand-to-full-page + minimize
+     - Footer: **“POWERED BY K-BRAIN · KONNTO INTELLIGENCE”**
+     - Reset button
+
+3. **Card UI updates**
+   - Extend `BrainCard` to render new `handover` card:
+     - Amber tone
+     - Confirm / Dismiss buttons
+
+4. **Visual parity with reference**
+   - Ensure chat typography + spacing supports “CEO brief” formatting:
+     - clean bullets, tight hierarchy, strong readability on dark background.
+
+**Testing + QA (Conversational upgrade)**
+- Add backend tests covering:
+  - persona persistence
+  - handover card generation + confirm path
+  - expiry filtering logic
+- Add UI regression checks:
+  - streaming still works
+  - confirm/dismiss card actions work
+  - floating panel works across routes and in both themes
+
+---
+
+## Phase 5 delivered
+- brain.py: PERSONAS (chief_of_staff default, assistant, advisor, operator) + LIVE STATE reply prompt; analysis actions handover + set_persona (roles like "PCM" map to job titles).
+- engine.py: live_state() (people, approvals w/ amounts+age, work buckets, instructions in effect, facts, recent team chat); handover card confirm/dismiss/undo (sends thread msg, temp rule w/ expires_at end of local day, activity_log + audit); expired rules filtered; INR Indian grouping.
+- routes: PUT /api/me/brain-persona, POST /api/chat/reset (soft archive), card ops confirm/dismiss; /me returns brain_persona(s).
+- seed: 3 approvals (₹42,000 / ₹8,500 / ₹6,800) + cash-on-hand demo fact.
+- Frontend: BrainChatContext (shared conversation), KBrainPanel floating dock/panel on all app pages except /app/chat, BrainComposer, BrainMessages, PersonaSelect, HandoverCard + persona card.
+
 ## 3) Next Actions (immediate)
-1. **Optional**: Expand automated UI tests to cover interactions (not just navigation).
-2. **Optional**: Implement Global Search UI (`/api/search`).
-3. If WhatsApp should be live: add real Meta credentials and run WA validation tests (webhook, templates, outbound sends).
-4. Prepare for pilot rollout: add basic monitoring/telemetry and verify monthly usage limits behavior.
+
+### Phase 4 (Design) — P0
+1. Finish rewriting remaining frontend pages to new AI-native theme tokens/components.
+2. Run a full screenshot sweep (desktop + mobile) in **Dark** and **Light**:
+   - Landing, Auth, Onboarding
+   - App: Dashboard, Chat, Work, Team, Approvals, Documents, Knowledge, Settings, Privacy, Help
+   - Admin: all admin pages
+3. Fix visual issues: contrast, z-index layering (dialogs/popovers), responsive overflow.
+
+### Phase 5 (Conversation) — P0
+4. Implement K-BRAIN personas + persona picker (backend storage + frontend selector).
+5. Implement live-state reply block (approvals + open work + rules).
+6. Implement “handover / restriction” proposal card (confirm/dismiss) end-to-end.
+7. Add `/chat/reset` and UI entry point (panel + chat page).
+
+### Regression — P0
+8. Run `testing_agent_v3` after Phase 4 + Phase 5 changes to ensure no functional regressions.
 
 ---
 
@@ -180,7 +358,23 @@ This phase is now **optional** and focuses on usability and long-term stability.
 - Seeded demo org appears immediately for new owners.
 - App routes are complete (no missing imports). Core interactive elements have `data-testid`.
 
-### Optional hardening success criteria (future)
-- Reliable offline/poor-network behavior and better recovery UX.
-- Interaction-level E2E tests cover all critical UI flows.
-- WhatsApp credentials configured and verified end-to-end (webhook + templates + briefs).
+### Phase 4 Success Criteria (Redesign) ✅ when complete
+- Entire product (public + app + admin) uses the new KONNTO brand look.
+- Dark + Light themes work everywhere with an easy toggle.
+- Chat and AI-touchpoints feel alive (orb/glow/streaming) without making business screens noisy.
+- `prefers-reduced-motion` is respected.
+- No functional regressions: all tests and key flows still pass (chat streaming, cards, approvals, invites, work updates).
+
+### Phase 5 Success Criteria (K-BRAIN Conversational Upgrade) ✅ when complete
+- KONNTO consistently produces “chief-of-staff” style responses:
+  - name-based addressing where appropriate
+  - decision-first prioritization
+  - 1–2 meaningful proactive signals
+  - clear next step
+- Persona can be changed per member (settings + inline), persists across sessions.
+- Handover instructions produce a **confirmable** card and, on confirm, actually:
+  - messages the right person
+  - applies a temporary restriction with correct expiry
+  - logs an audit event
+- Floating K-BRAIN panel works on all app pages (dark/light) and does not break existing flows.
+- No regressions in streaming, card actions, approvals, and work updates.

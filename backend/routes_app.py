@@ -46,6 +46,8 @@ async def me(user: dict = Depends(current_user)):
         "pending_approvals": pending,
         "whatsapp_connected": wa_configured(),
         "scopes": SCOPES,
+        "brain_persona": (current or {}).get("brain_persona") or brain.DEFAULT_PERSONA,
+        "brain_personas": [{"id": k, "label": v["label"]} for k, v in brain.PERSONAS.items()],
     }
 
 
@@ -132,6 +134,18 @@ async def update_profile(body: ProfileIn, ctx: dict = Depends(get_ctx)):
     return await db.members.find_one({"member_id": m["member_id"]}, {"_id": 0})
 
 
+class PersonaIn(BaseModel):
+    persona: str
+
+
+@router.put("/me/brain-persona")
+async def set_brain_persona(body: PersonaIn, ctx: dict = Depends(get_ctx)):
+    if body.persona not in brain.PERSONAS:
+        raise HTTPException(400, "Unknown style")
+    await db.members.update_one({"member_id": ctx["member"]["member_id"]}, {"$set": {"brain_persona": body.persona}})
+    return {"ok": True, "brain_persona": body.persona, "label": brain.PERSONAS[body.persona]["label"]}
+
+
 class SwitchIn(BaseModel):
     org_id: str
 
@@ -188,12 +202,20 @@ async def update_org(body: OrgIn, ctx: dict = Depends(get_ctx)):
 # ================================================================ chat with KONNTO
 @router.get("/chat/messages")
 async def chat_messages(before: Optional[str] = None, limit: int = Query(60, le=200), ctx: dict = Depends(get_ctx)):
-    q = {"org_id": ctx["org"]["org_id"], "member_id": ctx["member"]["member_id"]}
+    q = {"org_id": ctx["org"]["org_id"], "member_id": ctx["member"]["member_id"], "archived": {"$ne": True}}
     if before:
         q["created_at"] = {"$lt": before}
     msgs = await db.brain_messages.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
     msgs.reverse()
     return {"messages": msgs}
+
+
+@router.post("/chat/reset")
+async def chat_reset(ctx: dict = Depends(get_ctx)):
+    """Start a fresh conversation. Old messages are archived (kept), business data is untouched."""
+    r = await db.brain_messages.update_many({"org_id": ctx["org"]["org_id"], "member_id": ctx["member"]["member_id"], "archived": {"$ne": True}},
+                                            {"$set": {"archived": True, "archived_at": iso()}})
+    return {"ok": True, "archived": r.modified_count}
 
 
 class Attachment(BaseModel):
@@ -307,7 +329,7 @@ class CardIn(BaseModel):
 
 @router.post("/chat/cards/{card_id}/{op}")
 async def chat_card(card_id: str, op: str, body: CardIn = CardIn(), ctx: dict = Depends(get_ctx)):
-    if op not in ("save", "skip", "undo"):
+    if op not in ("save", "skip", "undo", "confirm", "dismiss"):
         raise HTTPException(400, "Unknown action")
     res = await engine.card_action(ctx["org"], ctx["member"], card_id, op, body.edits)
     if res.get("error"):

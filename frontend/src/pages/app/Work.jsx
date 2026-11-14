@@ -141,11 +141,11 @@ function ItemDetail({ itemId, onClose, onChange, members }) {
   return (
     <div className="space-y-5 py-2">
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-primary font-semibold">{KIND_LABEL[detail.kind]}</div>
+        <div className="eyebrow text-primary">{KIND_LABEL[detail.kind]}</div>
         {editing ? (
           <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="mt-2 text-lg font-semibold" data-testid="work-detail-edit-title" />
         ) : (
-          <h2 className="mt-1 text-xl font-semibold" data-testid="work-detail-title">{detail.title}</h2>
+          <h2 className="mt-1.5 text-2xl font-display font-bold leading-tight" data-testid="work-detail-title">{detail.title}</h2>
         )}
         <div className="mt-2 flex items-center gap-2 flex-wrap">
           <StatusPill state={detail.state} />
@@ -154,7 +154,7 @@ function ItemDetail({ itemId, onClose, onChange, members }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-background p-3 space-y-3">
+      <div className="rounded-2xl border border-border bg-[hsl(var(--surface-2))] p-3.5 space-y-3">
         {editing ? (
           <>
             <Textarea rows={3} value={editForm.details || ""} onChange={(e) => setEditForm({ ...editForm, details: e.target.value })} data-testid="work-detail-edit-details" />
@@ -186,14 +186,14 @@ function ItemDetail({ itemId, onClose, onChange, members }) {
 
       {!editing && detail.can_edit && detail.state !== "done" && detail.state !== "cancelled" && (
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Update status</h3>
+          <h3 className="eyebrow text-muted-foreground">Update status</h3>
           <div className="grid grid-cols-3 gap-2">
             <Button variant="outline" onClick={() => setStatus("done")} data-testid="work-detail-mark-done"><Check className="h-4 w-4 mr-1" /> Done</Button>
             <Button variant="outline" onClick={() => setStatusForm({ ...statusForm, status: "delayed" })} data-testid="work-detail-mark-delayed"><Clock className="h-4 w-4 mr-1" /> Delayed</Button>
             <Button variant="outline" onClick={() => setStatusForm({ ...statusForm, status: "stuck" })} data-testid="work-detail-mark-stuck">Stuck</Button>
           </div>
           {(statusForm.status === "delayed" || statusForm.status === "stuck") && (
-            <div className="space-y-2 rounded-xl border border-border bg-background p-3">
+            <div className="space-y-2 rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3">
               <Textarea rows={2} placeholder="Short reason" value={statusForm.reason} onChange={(e) => setStatusForm({ ...statusForm, reason: e.target.value })} data-testid="work-detail-reason" />
               {statusForm.status === "delayed" && <Input type="datetime-local" value={statusForm.new_due_at} onChange={(e) => setStatusForm({ ...statusForm, new_due_at: e.target.value })} data-testid="work-detail-new-due" />}
               <div className="flex gap-2 justify-end">
@@ -207,7 +207,7 @@ function ItemDetail({ itemId, onClose, onChange, members }) {
 
       {detail.history?.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold mb-2">Timeline</h3>
+          <h3 className="eyebrow text-muted-foreground mb-2">Timeline</h3>
           <ul className="space-y-2 text-xs">
             {detail.history.slice().reverse().map((h, i) => (
               <li key={i} className="flex gap-3">
@@ -267,12 +267,12 @@ export default function WorkPage() {
   const rows = useMemo(() => data.items || [], [data]);
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1120px] mx-auto" data-testid="work-page">
+    <div className="p-4 lg:p-8 max-w-[1120px] mx-auto" data-testid="work-page">
       <PageHeader title="Work" subtitle="Tasks, promises, reminders — everything that needs doing.">
         <NewItemDialog onCreated={load} members={members} />
       </PageHeader>
 
-      <div className="sticky top-14 lg:top-16 z-10 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-background/95 backdrop-blur border-b border-border">
+      <div className="sticky top-14 lg:top-16 z-10 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 glass border-x-0 border-t-0">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <Tabs value={state} onValueChange={setState}>
             <TabsList data-testid="work-state-tabs" className="overflow-x-auto no-scrollbar max-w-full">
@@ -300,11 +300,11 @@ export default function WorkPage() {
           <EmptyState icon={Check} title="Nothing to show" body="Try changing the filter above — or add some work." testid="work-empty-state" />
         ) : (
           rows.map((item) => (
-            <button key={item.item_id} onClick={() => onSelect(item.item_id)} className="w-full text-left flex items-start gap-3 rounded-2xl border border-border bg-card px-3 py-3 hover:bg-accent/40 transition-colors" data-testid="work-item-row">
+            <button key={item.item_id} onClick={() => onSelect(item.item_id)} className="w-full text-left flex items-start gap-3 rounded-2xl surface surface-hover px-3.5 py-3.5" data-testid="work-item-row">
               <div className={cn("mt-1.5 h-2 w-2 rounded-full", stateDot(item.state))} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{KIND_LABEL[item.kind]}</span>
+                  <span className="eyebrow text-muted-foreground">{KIND_LABEL[item.kind]}</span>
                   {item.project_name && <span className="text-[11px] text-muted-foreground">· {item.project_name}</span>}
                 </div>
                 <div className="text-sm font-medium truncate">{item.title}</div>
@@ -323,7 +323,7 @@ export default function WorkPage() {
       </div>
 
       <Sheet open={!!selected} onOpenChange={(v) => !v && onSelect(null)}>
-        <SheetContent className="w-full sm:w-[520px] overflow-y-auto scrollbar-thin bg-card" data-testid="work-detail-sheet">
+        <SheetContent className="w-full sm:w-[520px] overflow-y-auto scrollbar-thin" data-testid="work-detail-sheet">
           <SheetHeader><SheetTitle>Work details</SheetTitle></SheetHeader>
           {selected && <ItemDetail itemId={selected} members={members} onClose={() => onSelect(null)} onChange={load} />}
         </SheetContent>

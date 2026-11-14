@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Send, LifeBuoy, Loader2 } from "lucide-react";
+import { Send, Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { KonntoMark, PageHeader, SectionCard } from "@/components/common";
+import { KonntoOrb, PageHeader, SectionCard } from "@/components/common";
 import { useApi } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export default function HelpPage() {
   const api = useApi();
@@ -15,7 +16,7 @@ export default function HelpPage() {
   const [feedback, setFeedback] = useState("");
   const endRef = useRef(null);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [msgs]);
 
   const send = async () => {
     if (!text.trim() || busy) return;
@@ -36,29 +37,33 @@ export default function HelpPage() {
   };
 
   return (
-    <div className="p-4 lg:p-6 max-w-[900px] mx-auto space-y-5" data-testid="help-page">
-      <PageHeader title="Help" subtitle="Ask KONNTO anything, or send us a note. We read every one." />
+    <div className="p-4 lg:p-8 max-w-[900px] mx-auto space-y-5" data-testid="help-page">
+      <PageHeader eyebrow="Support" title="Help" subtitle="Ask KONNTO anything, or send us a note. We read every one." />
 
-      <SectionCard title="Ask KONNTO" testid="help-chat-card">
-        <div className="space-y-3">
-          <div className="min-h-[220px] max-h-[380px] overflow-y-auto scrollbar-thin space-y-2">
+      <div className="k-shimmer k-shimmer--calm" data-testid="help-chat-card">
+        <div className="relative rounded-[inherit] bg-card/95 p-4 sm:p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <KonntoOrb size={40} state={busy ? "streaming" : "idle"} />
+            <div><div className="eyebrow text-primary">Help assistant</div><div className="font-display font-bold">Ask KONNTO</div></div>
+          </div>
+          <div className="min-h-[220px] max-h-[380px] overflow-y-auto scrollbar-thin space-y-3 pr-1">
             {msgs.map((m, i) => (
               m.role === "user"
-                ? <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-tr-md bg-primary/10 border border-primary/15 px-3 py-2 text-sm">{m.text}</div>
-                : <div key={i} className="flex gap-2 items-start"><KonntoMark size={26} /><div className="max-w-[85%] rounded-2xl rounded-tl-md bg-card border border-border px-3 py-2 text-sm whitespace-pre-wrap">{m.text || <span className="flex gap-1 py-1"><span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" /></span>}</div></div>
+                ? <div key={i} className="ml-auto max-w-[85%] rounded-[18px] rounded-tr-md bg-brand-gradient text-white px-4 py-2.5 text-sm w-fit">{m.text}</div>
+                : <div key={i} className={cn("k-seam max-w-[90%] rounded-[18px] rounded-tl-md glass pl-5 pr-4 py-2.5 text-sm whitespace-pre-wrap w-fit", busy && i === msgs.length - 1 && "k-seam--live")}>{m.text || <span className="flex gap-1.5 py-1"><span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" /></span>}</div>
             ))}
             <div ref={endRef} />
           </div>
-          <div className="flex gap-2">
+          <div className="mt-4 flex gap-2">
             <Input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); send(); } }} placeholder="Type a question" data-testid="help-chat-input" />
-            <Button onClick={send} disabled={busy || !text.trim()} data-testid="help-chat-send">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</Button>
+            <Button size="icon" onClick={send} disabled={busy || !text.trim()} data-testid="help-chat-send" aria-label="Send">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</Button>
           </div>
         </div>
-      </SectionCard>
+      </div>
 
-      <SectionCard title="Send us feedback" testid="help-feedback-card">
+      <SectionCard title="Send us feedback" icon={MessageCircle} testid="help-feedback-card">
         <Textarea rows={3} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="What could be better? A bug, idea, or just a note." data-testid="feedback-text" />
-        <Button className="mt-2" onClick={sendFeedback} disabled={!feedback.trim()} data-testid="feedback-send">Send</Button>
+        <Button className="mt-3" onClick={sendFeedback} disabled={!feedback.trim()} data-testid="feedback-send">Send</Button>
       </SectionCard>
     </div>
   );
