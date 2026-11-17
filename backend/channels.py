@@ -285,6 +285,8 @@ async def notify(member: dict, *, org: dict, kind: str, text: str, buttons: Opti
                             org_id=org["org_id"], member_id=member["member_id"], kind=kind)
         wa_status = rec["status"]
     result["whatsapp"] = wa_status
+    if org.get("is_demo"):  # the demo business never sends real email
+        email_fallback = False
     if wa_status != "sent" and email_fallback and member.get("email"):
         url = app_link(link_path or "/app/chat")
         html = email_html(email_subject or "An update from KONNTO", [text], "Open KONNTO", url if url.startswith("https://") else None)

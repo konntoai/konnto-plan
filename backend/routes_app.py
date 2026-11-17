@@ -11,7 +11,8 @@ from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 
 from core import (db, now, iso, parse_iso, new_id, current_user, get_ctx, has_scope, is_owner, item_scope_query, doc_scope_query,
-                  redact_item, item_state, SCOPES, norm_phone, org_tz, fmt_local, audit, app_link)
+                  redact_item, item_state, SCOPES, norm_phone, org_tz, fmt_local, audit, app_link,
+                  fact_scope_query, fact_category, can_read_rules)
 from channels import notify, add_notice, wa_send, wa_configured, send_email, email_html
 from storage import put_object, get_object, extract_text, ext_of, DOC_TYPES, IMAGE_TYPES, AUDIO_TYPES, MAX_BYTES, APP_NAME
 import brain
@@ -255,8 +256,18 @@ async def chat_stream(body: ChatIn, ctx: dict = Depends(get_ctx)):
         text = "(sent an attachment)"
     extra = _attachment_context(atts)
 
+    state = await engine.pop_pending_state(ctx["member"]) if not atts else None
+
     async def gen():
         try:
+            if state:  # the person is answering a question KONNTO just asked (delay reason, "always allow" amount ...)
+                reply = await engine.handle_pending_reply(ctx["org"], ctx["member"], state, text, via="app")
+                u, a = await _chat_pair(ctx["org"], ctx["member"], text, reply)
+                yield _sse({"type": "user", "message": u})
+                yield _sse({"type": "cards", "cards": []})
+                yield _sse({"type": "delta", "text": reply})
+                yield _sse({"type": "done", "message": a})
+                return
             async for ev in engine.run_brain(ctx["org"], ctx["member"], text, channel="app", attachments=atts, extra_context=extra):
                 yield _sse(ev)
         except Exception as e:
@@ -332,19 +343,44 @@ async def chat_card(card_id: str, op: str, body: CardIn = CardIn(), ctx: dict = 
     if op not in ("save", "skip", "undo", "confirm", "dismiss"):
         raise HTTPException(400, "Unknown action")
     res = await engine.card_action(ctx["org"], ctx["member"], card_id, op, body.edits)
-    if res.get("error"):
+    if res.get("error") == "not_found":
         raise HTTPException(404, "Not found")
+    if res.get("error"):
+        raise HTTPException(403, res.get("message") or "Not allowed")
     return res
 
 
 class ActionIn(BaseModel):
     action_id: str
+    msg_id: Optional[str] = None
+    label: Optional[str] = None
+
+
+async def _chat_pair(org: dict, member: dict, user_text: str, reply: str, kind: str = "message") -> tuple:
+    """Store a tap/reply + KONNTO's answer in the member's chat so the history matches what happened."""
+    u = {"msg_id": new_id("bm"), "org_id": org["org_id"], "member_id": member["member_id"], "role": "user", "kind": kind,
+         "text": user_text, "channel": "app", "attachments": [], "created_at": iso()}
+    a = {"msg_id": new_id("bm"), "org_id": org["org_id"], "member_id": member["member_id"], "role": "assistant", "kind": "message",
+         "text": reply, "cards": [], "citations": [], "channel": "app", "reply_to": u["msg_id"], "created_at": iso()}
+    await db.brain_messages.insert_many([dict(u), dict(a)])
+    return u, a
 
 
 @router.post("/chat/actions")
 async def chat_action(body: ActionIn, ctx: dict = Depends(get_ctx)):
-    text = await engine.handle_button(ctx["org"], ctx["member"], body.action_id, via="app")
-    return {"text": text}
+    org, m = ctx["org"], ctx["member"]
+    if body.msg_id:
+        src = await db.brain_messages.find_one({"msg_id": body.msg_id, "member_id": m["member_id"]}, {"_id": 0, "buttons": 1, "buttons_used": 1})
+        if not src or not any(b.get("id") == body.action_id for b in (src.get("buttons") or [])):
+            raise HTTPException(404, "That button is no longer available")
+        if src.get("buttons_used"):
+            raise HTTPException(409, "You already answered this one")
+    text = await engine.handle_button(org, m, body.action_id, via="app")
+    if body.msg_id:
+        await db.brain_messages.update_one({"msg_id": body.msg_id, "member_id": m["member_id"]},
+                                           {"$set": {"buttons_used": body.action_id, "buttons_used_label": body.label, "buttons_used_at": iso()}})
+    u, a = await _chat_pair(org, m, body.label or body.action_id.split(":")[0], text, kind="button")
+    return {"text": text, "user_message": u, "message": a}
 
 
 # ================================================================ work items
@@ -529,6 +565,8 @@ async def list_projects(ctx: dict = Depends(get_ctx)):
         q = {**item_scope_query(ctx["member"]), "project_id": p["project_id"]}
         p["total"] = await db.items.count_documents(q)
         p["done"] = await db.items.count_documents({**q, "status": "done"})
+    if not has_scope(ctx["member"], "team_work"):
+        projects = [p for p in projects if p["total"] or p.get("created_by") == ctx["member"]["member_id"]]
     return {"projects": projects}
 
 
@@ -571,7 +609,8 @@ async def dashboard(ctx: dict = Depends(get_ctx)):
     brief = await db.brain_messages.find_one({"member_id": m["member_id"], "kind": "brief"}, {"_id": 0}, sort=[("created_at", -1)])
     pending_approvals = await db.approvals.count_documents({"org_id": org["org_id"], "status": "pending"}) if has_scope(m, "approve") else \
         await db.approvals.count_documents({"org_id": org["org_id"], "status": "pending", "requested_by": m["member_id"]})
-    team = await db.members.count_documents({"org_id": org["org_id"], "status": "active"})
+    team = await db.members.count_documents({"org_id": org["org_id"], "status": "active"}) if m.get("member_type") != "partner" else \
+        len(engine.visible_people(m, await db.members.find({"org_id": org["org_id"], "status": "active"}, {"_id": 0}).to_list(500)))
     slim = lambda lst: [redact_item({k: i.get(k) for k in ("item_id", "title", "kind", "state", "assignee_name", "due_at", "counterparty", "stuck_reason", "delay_reason", "amount", "currency", "created_by", "assignee_id")}, m) for i in lst]
     return {"counts": {"due_today": len(due_today), "overdue": len(overdue), "stuck": len(stuck), "done_week": len(done_week),
                        "open": len(open_items), "approvals": pending_approvals, "team": team},
@@ -666,7 +705,8 @@ async def reply_words(approval_id: str, body: ReplyIn, ctx: dict = Depends(get_c
 # ================================================================ rules + knowledge
 @router.get("/rules")
 async def list_rules(ctx: dict = Depends(get_ctx)):
-    return {"rules": await engine.active_rules(ctx["org"]["org_id"]), "can_edit": has_scope(ctx["member"], "manage_team")}
+    rules = await engine.active_rules(ctx["org"]["org_id"]) if can_read_rules(ctx["member"]) else []
+    return {"rules": rules, "can_edit": has_scope(ctx["member"], "manage_team")}
 
 
 class RuleIn(BaseModel):
@@ -702,11 +742,12 @@ async def delete_rule(rule_id: str, ctx: dict = Depends(get_ctx)):
 @router.get("/knowledge")
 async def knowledge(ctx: dict = Depends(get_ctx)):
     org = ctx["org"]
-    facts = await db.knowledge.find({"org_id": org["org_id"], "deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    facts = await db.knowledge.find(fact_scope_query(ctx["member"]), {"_id": 0}).sort("created_at", -1).to_list(500)
     docs = await db.documents.count_documents(doc_scope_query(ctx["member"]))
     people = await db.members.count_documents({"org_id": org["org_id"], "status": "active"})
+    rules = await engine.active_rules(org["org_id"]) if can_read_rules(ctx["member"]) else []
     return {"business": {k: org.get(k) for k in ("name", "industry", "description", "country", "currency", "timezone")},
-            "facts": facts, "rules": await engine.active_rules(org["org_id"]), "documents": docs, "people": people}
+            "facts": facts, "rules": rules, "documents": docs, "people": people}
 
 
 class FactIn(BaseModel):
@@ -717,7 +758,10 @@ class FactIn(BaseModel):
 async def add_fact(body: FactIn, ctx: dict = Depends(get_ctx)):
     if not body.text.strip():
         raise HTTPException(400, "Write something to remember")
-    f = {"fact_id": new_id("fct"), "org_id": ctx["org"]["org_id"], "text": body.text.strip()[:400], "source": "manual",
+    if ctx["member"].get("member_type") == "partner":
+        raise HTTPException(403, "External users can't add to company memory")
+    f = {"fact_id": new_id("fct"), "org_id": ctx["org"]["org_id"], "text": body.text.strip()[:400], "source": "manual", "confirmed": True,
+         "category": fact_category(body.text),
          "created_by": ctx["member"]["member_id"], "created_by_name": ctx["member"]["name"], "created_at": iso()}
     await db.knowledge.insert_one(dict(f))
     return f
@@ -829,8 +873,12 @@ async def search(q: str = Query(..., min_length=2), ctx: dict = Depends(get_ctx)
     people = await db.members.find({"org_id": org["org_id"], "status": {"$in": ["active", "invited"]}, "$or": [{"name": rx}, {"job": rx}]},
                                    {"_id": 0, "member_id": 1, "name": 1, "job": 1, "member_type": 1, "status": 1}).to_list(20)
     docs = await db.documents.find({**doc_scope_query(m), "$and": [{"$or": [{"filename": rx}, {"summary": rx}, {"text": rx}]}]}, {"_id": 0, "text": 0}).limit(10).to_list(10)
-    facts = await db.knowledge.find({"org_id": org["org_id"], "deleted": {"$ne": True}, "text": rx}, {"_id": 0}).limit(10).to_list(10)
-    rules = await db.rules.find({"org_id": org["org_id"], "active": True, "text": rx}, {"_id": 0}).limit(10).to_list(10)
+    fq = fact_scope_query(m)
+    fq["$and"] = [{"text": rx}] + ([{"text": fq.pop("text")}] if "text" in fq else [])
+    facts = await db.knowledge.find(fq, {"_id": 0}).limit(10).to_list(10)
+    rules = await db.rules.find({"org_id": org["org_id"], "active": True, "text": rx}, {"_id": 0}).limit(10).to_list(10) if can_read_rules(m) else []
+    if m.get("member_type") == "partner":
+        people = [p for p in people if p.get("member_type") == "owner" or p["member_id"] in (m.get("invited_by"), m.get("manager_id"))]
     threads = await db.threads.find({"org_id": org["org_id"], "member_ids": m["member_id"]}, {"_id": 0, "thread_id": 1}).to_list(300)
     chats = await db.thread_messages.find({"thread_id": {"$in": [t["thread_id"] for t in threads]}, "text": rx}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10) if threads else []
     konnto = await db.brain_messages.find({"member_id": m["member_id"], "text": rx}, {"_id": 0, "msg_id": 1, "text": 1, "role": 1, "created_at": 1}).sort("created_at", -1).limit(8).to_list(8)

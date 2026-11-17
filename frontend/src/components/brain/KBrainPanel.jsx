@@ -63,7 +63,7 @@ export function KBrainPanel() {
   const location = useLocation();
   const navigate = useNavigate();
   const { me } = useMe();
-  const { messages, people, loading, send, sending, onCardAction } = useBrainChat();
+  const { messages, people, loading, send, sending, onCardAction, pressButton } = useBrainChat();
   const [open, setOpen] = useState(false);
   const scrollRef = useRef(null);
   const firstName = (me?.member?.name || me?.user?.name || "").split(" ")[0];
@@ -133,7 +133,7 @@ export function KBrainPanel() {
           ) : (
             recent.map((m) => (
               <div key={m.msg_id}>
-                {m.role === "user" ? <UserBubble msg={m} compact /> : <AssistantBubble msg={m} people={people} onCardAction={onCardAction} compact />}
+                {m.role === "user" ? <UserBubble msg={m} compact /> : <AssistantBubble msg={m} people={people} onCardAction={onCardAction} onButton={pressButton} compact />}
               </div>
             ))
           )}

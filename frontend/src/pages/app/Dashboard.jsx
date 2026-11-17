@@ -1,3 +1,4 @@
+import { BrainMarkdown } from "@/components/brain/BrainMarkdown";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Clock, PauseCircle, CheckCircle2, Users, ShieldCheck, ArrowRight, CalendarClock, GitBranch } from "lucide-react";
@@ -77,8 +78,8 @@ export default function DashboardPage() {
         })}
       </div>
 
-      <div className="mt-5 grid lg:grid-cols-5 gap-4">
-        <div className="lg:col-span-3 space-y-4">
+      <div className="mt-5 grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3 space-y-4 min-w-0">
           {brief?.text && (
             <div className="k-shimmer k-shimmer--calm" data-testid="dashboard-brief-card">
               <div className="relative rounded-[inherit] bg-card/95 p-5 overflow-hidden">
@@ -90,7 +91,7 @@ export default function DashboardPage() {
                     <div className="font-display font-bold text-lg leading-tight">This morning</div>
                   </div>
                 </div>
-                <div className="relative mt-4 text-[15px] whitespace-pre-wrap leading-7">{brief.text}</div>
+                <div className="relative mt-4 text-[15px] leading-7" data-testid="dashboard-brief-text"><BrainMarkdown text={brief.text} /></div>
               </div>
             </div>
           )}
@@ -108,7 +109,7 @@ export default function DashboardPage() {
             </SectionCard>
           )}
         </div>
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4 min-w-0">
           <div className="grid grid-cols-2 gap-3">
             <Link to="/app/approvals" className="relative overflow-hidden rounded-3xl surface surface-hover p-4" data-testid="dashboard-approvals-card">
               <div className="absolute -bottom-10 -right-8 h-24 w-24 rounded-full bg-brand-red/15 blur-2xl pointer-events-none" aria-hidden />

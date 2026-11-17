@@ -1,4 +1,9 @@
+import { Link } from "react-router-dom";
+import { useState } from "react";
+import { FileText, CheckSquare, BookOpen, MessageSquare, ShieldCheck, FolderKanban, Check, ArrowUpRight, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { KonntoOrb } from "@/components/common";
+import { BrainMarkdown } from "@/components/brain/BrainMarkdown";
 import { BrainCard } from "@/components/cards/BrainCard";
 import { fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -24,7 +29,54 @@ export const UserBubble = ({ msg, compact = false }) => (
   </div>
 );
 
-export const AssistantBubble = ({ msg, people, onCardAction, compact = false }) => {
+const SRC_ICON = { work: CheckSquare, document: FileText, fact: BookOpen, chat: MessageSquare, approval: ShieldCheck, project: FolderKanban };
+
+const Sources = ({ items }) => (
+  <div className="mt-2 flex flex-wrap gap-1.5" data-testid="chat-sources">
+    {items.map((c) => {
+      const Icon = SRC_ICON[c.type] || BookOpen;
+      return (
+        <Link key={`${c.type}-${c.id}`} to={c.link || "#"} className="inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--surface-2))] px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors" data-testid="chat-source-chip">
+          <span className="font-mono text-primary">{c.n}</span>
+          <Icon className="h-3 w-3 shrink-0" />
+          <span className="truncate">{c.title}</span>
+        </Link>
+      );
+    })}
+  </div>
+);
+
+const NoticeButtons = ({ msg, onPress }) => {
+  const [busy, setBusy] = useState(null);
+  const used = msg.buttons_used;
+  if (used) {
+    const label = msg.buttons_used_label || (msg.buttons || []).find((b) => b.id === used)?.label || "Answered";
+    return (
+      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--surface-2))] px-3 py-1 text-xs text-muted-foreground" data-testid="notice-buttons-used">
+        <Check className="h-3.5 w-3.5 text-primary" /> You chose: {label}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 flex flex-wrap gap-2" data-testid="notice-buttons">
+      {msg.buttons.map((b, i) => (
+        <Button
+          key={b.id}
+          size="sm"
+          variant={i === 0 ? "default" : "outline"}
+          disabled={!!busy || !onPress}
+          onClick={async () => { setBusy(b.id); await onPress(msg, b); setBusy(null); }}
+          className="h-9 rounded-full px-4"
+          data-testid={`notice-btn-${b.id.split(":")[0]}`}
+        >
+          {busy === b.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{b.label}
+        </Button>
+      ))}
+    </div>
+  );
+};
+
+export const AssistantBubble = ({ msg, people, onCardAction, onButton, compact = false }) => {
   const cards = msg.cards || [];
   const text = msg.text || "";
   const live = !!msg.streaming;
@@ -43,13 +95,13 @@ export const AssistantBubble = ({ msg, people, onCardAction, compact = false }) 
           {text ? (
             <div
               className={cn(
-                "k-seam rounded-[20px] rounded-tl-md glass pl-5 pr-4 py-3 leading-relaxed whitespace-pre-wrap",
+                "k-seam rounded-[20px] rounded-tl-md glass pl-5 pr-4 py-3 leading-relaxed",
                 compact ? "text-[14px]" : "text-[15px] shadow-[0_14px_40px_-24px_hsl(var(--glass-shadow))]",
                 live && "k-seam--live"
               )}
               data-testid="chat-assistant-text"
             >
-              {text}
+              <BrainMarkdown text={text} />
               {live && <span className="cursor-blink" />}
             </div>
           ) : live ? (
@@ -58,6 +110,13 @@ export const AssistantBubble = ({ msg, people, onCardAction, compact = false }) 
               <span className="font-mono text-[11px] tracking-wider">K-BRAIN…</span>
             </div>
           ) : null}
+          {!live && msg.citations?.length > 0 && <Sources items={msg.citations} />}
+          {!live && msg.buttons?.length > 0 && <NoticeButtons msg={msg} onPress={onButton} />}
+          {!live && msg.link_path && !msg.buttons?.length && (
+            <Link to={msg.link_path} className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline" data-testid="notice-open-link">
+              Open <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          )}
           {cards.length > 0 && (
             <div className="mt-2.5 space-y-2.5">
               {cards.map((c) => <BrainCard key={c.card_id} card={c} people={people} onAction={onCardAction} />)}

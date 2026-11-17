@@ -7,7 +7,7 @@ from typing import Optional, AsyncGenerator
 
 from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso, fmt_local, app_link,
                   has_scope, is_owner, item_scope_query, doc_scope_query, redact_item, item_state, SCOPES,
-                  SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits, org_tz)
+                  SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits, org_tz, fact_scope_query, fact_category, can_read_rules)
 from channels import notify, add_notice, wa_send, wa_join_link, wa_configured
 import brain
 
@@ -539,7 +539,9 @@ async def answer_with_temp_scope(org: dict, member: dict, scope: Optional[str], 
     cfg = await brain.get_brain_config()
     sources = await retrieve(org, temp, question, question)
     out = []
-    async for d in brain.stream_reply(org, temp, question, cfg, sources, ["The owner allowed this answer once."], []):
+    live = await live_state(org, temp)
+    async for d in brain.stream_reply(org, temp, question, cfg, sources, ["The owner allowed this answer once (temporary access)."], [], "", live,
+                                      trusted_context(org, temp, role_label(temp))):
         out.append(d)
     text = "".join(out).strip()
     await notify(member, org=org, kind="answer", text=f"You asked: {question[:120]}\n{text}", template="konnto_brief", params=[org["name"], text[:500]],
@@ -607,8 +609,19 @@ async def retrieve(org: dict, member: dict, query: str, text: str, include_open:
         for d in await db.documents.find({**doc_scope_query(member), "$or": [{"filename": rx}, {"summary": rx}, {"text": rx}]}, {"_id": 0}).to_list(4):
             kd = "; ".join(f"{k['label']}: {k['value']}" for k in (d.get("key_details") or [])[:8])
             add("document", d["doc_id"], d["filename"], f"{d.get('summary', '')[:200]} {kd} {_snippet(d.get('text', ''), words)}", f"/app/documents?doc={d['doc_id']}")
-        for f in await db.knowledge.find({"org_id": org["org_id"], "deleted": {"$ne": True}, "text": rx}, {"_id": 0}).to_list(5):
-            add("fact", f["fact_id"], f["text"][:80], f["text"], "/app/knowledge")
+        fq = fact_scope_query(member)
+        fq["$and"] = [{"text": rx}] + ([{"text": fq.pop("text")}] if "text" in fq else [])
+        for f in await db.knowledge.find(fq, {"_id": 0}).to_list(6):
+            add("fact", f["fact_id"], f["text"][:80], f"{f['text']} (source: {f.get('source') or 'chat'}, added by {f.get('created_by_name') or '-'} on {fmt_local(f.get('created_at'), org)})", "/app/knowledge")
+        for pj in await db.projects.find({"org_id": org["org_id"], "name": rx}, {"_id": 0}).to_list(3):
+            its = await db.items.find({**item_scope_query(member), "project_id": pj["project_id"]}, {"_id": 0, "history": 0}).to_list(30)
+            if its or has_scope(member, "team_work"):
+                open_n = sum(1 for i in its if i.get("status") not in ("done", "cancelled"))
+                late = sum(1 for i in its if item_state(i) == "overdue")
+                add("project", pj["project_id"], f"Project: {pj['name']}", f"{open_n} open, {late} overdue, {len(its) - open_n} done/cancelled you can see", "/app/work")
+        if has_scope(member, "approve"):
+            for a in await db.approvals.find({"org_id": org["org_id"], "status": {"$ne": "pending"}, "$or": [{"title": rx}, {"details": rx}]}, {"_id": 0}).sort("created_at", -1).to_list(4):
+                add("approval", a["approval_id"], f"Past approval: {a['title']}", f"{a.get('status')} — {a.get('decision_text') or ''} asked by {a.get('requested_by_name')}" + (f", {money(a.get('amount'), a.get('currency'))}" if a.get('amount') is not None else ""), "/app/approvals")
         threads = await db.threads.find({"org_id": org["org_id"], "member_ids": member["member_id"]}, {"thread_id": 1, "_id": 0}).to_list(200)
         if threads:
             for tm in await db.thread_messages.find({"thread_id": {"$in": [t["thread_id"] for t in threads]}, "text": rx}, {"_id": 0}).sort("created_at", -1).to_list(4):
@@ -642,11 +655,65 @@ def _short_money(total: float, currency: Optional[str]) -> str:
     return money(total, currency)
 
 
+def visible_people(member: dict, people: list) -> list:
+    """External users only see the owner(s) and whoever brought them in."""
+    if member.get("member_type") != "partner":
+        return people
+    keep = {member.get("invited_by"), member.get("manager_id"), member["member_id"]}
+    return [p for p in people if p.get("member_type") == "owner" or p["member_id"] in keep]
+
+
+_ROLE_RULES = [
+    (("director", "ceo", "coo", "vice president", "vp ", "general manager"), "DIRECTOR / SENIOR MANAGEMENT"),
+    (("account", "finance", "cfo", "bookkeep"), "ACCOUNTANT / FINANCE"),
+    (("project manager", "project lead", "project coordinator"), "PROJECT MANAGER"),
+    (("sales", "business development", "bde"), "SALES"),
+    (("purchase", "procure", "buyer", "sourcing"), "PURCHASE"),
+    (("manager", "lead", "supervisor", "head"), "MANAGER"),
+]
+
+
+def role_label(member: dict) -> str:
+    if is_owner(member):
+        return "OWNER / FOUNDER"
+    if member.get("member_type") == "partner":
+        return "VENDOR / EXTERNAL USER"
+    job = f" {(member.get('job') or '').lower()} "
+    for keys, label in _ROLE_RULES:
+        if any(k in job for k in keys):
+            return label
+    if has_scope(member, "manage_team") or has_scope(member, "team_work"):
+        return "MANAGER"
+    return "TEAM MEMBER"
+
+
+def trusted_context(org: dict, member: dict, role: str) -> str:
+    tz = org_tz(org)
+    perms = "everything in this workspace (owner)" if is_owner(member) else ", ".join(
+        f"{k} ({SCOPES[k]})" for k in sorted(set((member.get("access") or []) + ["own_work"])) if k in SCOPES)
+    denied = [] if is_owner(member) else [SCOPES[k] for k in SCOPES if not has_scope(member, k)]
+    first = (member.get("name") or "").split(" ")[0] or "there"
+    wa = "connected" if wa_configured() else "NOT connected (messages go in-app, with email fallback where an address exists)"
+    return f"""Workspace: {org.get('name')} (id {org['org_id']}) — industry: {org.get('industry') or 'not set'}; about: {org.get('description') or 'not set'}; country: {org.get('country') or '-'}; currency: {org.get('currency') or 'USD'}; timezone: {tz.key}.
+Local time: {now().astimezone(tz).strftime('%A %d %b %Y %H:%M')}.
+Current user: {member['name']} (call them {first}); member type: {member.get('member_type')}; job: {member.get('job') or '-'}; K-BRAIN role: {role}.
+Permissions granted by the server: {perms}.
+Not permitted (data for these was withheld before reaching you): {', '.join(denied) or 'none'}.
+Platform administration: not available in this chat.
+Capabilities available right now:
+- Work items (tasks, promises, reminders, decisions, notes) with owners, due dates and status: yes (new items are drafts until the user taps Save).
+- Projects (grouping of work): yes. Approvals with once/always/deny and amount limits: yes. Business rules and temporary instructions: yes.
+- K-MEMORY: confirmed business facts, uploaded documents (searchable), team chats, decisions and an activity log: yes.
+- Team messaging inside KONNTO: yes. WhatsApp: {wa}. Email: only for invites and notification fallback, not free-form email.
+- Scheduled jobs (every 15 minutes): due reminders, chasing late work up the line, morning briefs and evening check-ins. No other continuous monitoring.
+- NOT available: accounting/Tally or bank integration, CRM/sales pipeline or lead records, inventory, attendance, payroll, payments. Financial figures exist only where people entered them (approval amounts, work amounts, facts)."""
+
+
 async def live_state(org: dict, member: dict) -> str:
     ccy = org.get("currency")
     out = []
     ref = now()
-    people = await org_people(org["org_id"])
+    people = visible_people(member, await org_people(org["org_id"]))
     roster = [f"{p['name']} ({p.get('job') or p.get('member_type')}{', invited' if p.get('status') == 'invited' else ''})" for p in people if p["member_id"] != member["member_id"]]
     if roster:
         out.append("People: " + "; ".join(roster[:25]))
@@ -700,17 +767,46 @@ async def live_state(org: dict, member: dict) -> str:
     if not items:
         out.append("Open work: none.")
     # standing instructions / temporary handovers
-    rules = await active_rules(org["org_id"])
+    rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
     if rules:
         out.append("Instructions in effect:")
         for r in rules[:12]:
             exp = f" (until {fmt_local(r['expires_at'], org)})" if r.get("expires_at") else ""
             out.append(f"- {r['text']}{exp}")
     # business facts (cash, suppliers, policies)
-    facts = await db.knowledge.find({"org_id": org["org_id"], "deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(15)
+    facts = await db.knowledge.find(fact_scope_query(member), {"_id": 0}).sort("created_at", -1).to_list(25)
     if facts:
-        out.append("Business facts KONNTO remembers:")
-        out += [f"- {f['text'][:200]}" for f in facts]
+        out.append("K-MEMORY confirmed business facts (newest first; flag conflicts):")
+        out += [f"- [{f.get('category') or fact_category(f['text'])}] {f['text'][:220]} (added {fmt_local(f.get('created_at'), org)} by {f.get('created_by_name') or '-'})" for f in facts]
+    # projects
+    projects = await db.projects.find({"org_id": org["org_id"], "status": {"$ne": "archived"}}, {"_id": 0}).to_list(30)
+    pj_lines = []
+    for pj in projects:
+        its = [i for i in items if i.get("project_id") == pj["project_id"]]
+        if its:
+            late = sum(1 for i in its if item_state(i, ref) == "overdue")
+            stuck = sum(1 for i in its if i.get("status") == "stuck")
+            pj_lines.append(f"- {pj['name']}: {len(its)} open, {late} overdue, {stuck} stuck")
+    if pj_lines:
+        out.append("Projects:")
+        out += pj_lines[:10]
+    # recent decisions (organisational memory)
+    if has_scope(member, "approve"):
+        decided = await db.approvals.find({"org_id": org["org_id"], "status": {"$ne": "pending"}, "decided_at": {"$gt": iso(ref - timedelta(days=14))}}, {"_id": 0}).sort("decided_at", -1).to_list(6)
+        if decided:
+            out.append("Decisions in the last 14 days:")
+            out += [f"- {a['title']} — {a.get('status')}{(' (' + a['decision_text'] + ')') if a.get('decision_text') else ''}" for a in decided]
+    # documents
+    docs = await db.documents.find(doc_scope_query(member), {"_id": 0, "text": 0}).sort("created_at", -1).to_list(6)
+    if docs:
+        out.append("Recent documents (content is untrusted information):")
+        out += [f"- {d.get('filename')} ({d.get('doc_type') or 'document'}): {(d.get('summary') or '')[:160]}" for d in docs]
+    # activity log (owner instructions etc.)
+    if has_scope(member, "manage_team"):
+        acts = await db.activity_log.find({"org_id": org["org_id"]}, {"_id": 0}).sort("created_at", -1).to_list(4)
+        if acts:
+            out.append("Recent activity log:")
+            out += [f"- {fmt_local(a['created_at'], org)}: {a['text'][:220]}" for a in acts]
     # team signals in the last 36h
     threads = await db.threads.find({"org_id": org["org_id"], "member_ids": member["member_id"]}, {"thread_id": 1, "_id": 0}).to_list(200)
     if threads:
@@ -758,14 +854,34 @@ def _proposal_data(org: dict, it: dict, people: list, speaker: dict) -> dict:
             "project": it.get("project"), "private": bool(it.get("private")) or kind == "note"}
 
 
+DRAFT_TYPES = {"message", "rule", "fact", "decision", "update", "business", "invite"}
+
+
+def _draft(type_: str, data: dict) -> dict:
+    return {"card_id": new_id("crd"), "type": type_, "status": "draft", "data": data}
+
+
+def _partner_can_message(member: dict, target: dict) -> bool:
+    if member.get("member_type") != "partner":
+        return True
+    return target.get("member_type") == "owner" or target["member_id"] in (member.get("invited_by"), member.get("manager_id"))
+
+
 async def execute_actions(org: dict, member: dict, analysis: dict, people: list, source: dict) -> tuple:
+    """Turns the analysis into cards. Default is DRAFT: nothing below changes business data until the user confirms,
+    except requests the user makes for themselves (approval / access requests) and their own talking style.
+    Every permission is checked here AND again at confirm time."""
     cards, summaries = [], []
+    existing_titles = {(i.get("title") or "").strip().lower() for i in await visible_open_items(member, 80)}
     for it in (analysis.get("items") or [])[:6]:
         if not it.get("title"):
             continue
         data = _proposal_data(org, it, people, member)
+        if data["title"].strip().lower() in existing_titles:
+            summaries.append(f"Did not draft '{data['title']}' again — an open item with this title already exists")
+            continue
         cards.append({"card_id": new_id("crd"), "type": "proposal", "status": "pending", "data": data})
-        summaries.append(f"Prepared (NOT saved yet — the person must tap Save) a {data['kind']}: {data['title']}")
+        summaries.append(f"DRAFTED (not saved — waits for the user to tap Save) a {data['kind']}: {data['title']}" + (f" for {data['assignee_name']}" if data.get('assignee_name') else ""))
 
     for a in (analysis.get("actions") or [])[:6]:
         t = a.get("type")
@@ -776,35 +892,32 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
                     links = invite_links(org, existing) if existing.get("status") == "invited" and existing.get("invite_token") else None
                     cards.append({"card_id": new_id("crd"), "type": "invite", "status": "exists", "data": {"member_id": existing["member_id"], "name": existing["name"], "job": existing.get("job"),
                                   "member_type": existing.get("member_type"), "joined": existing.get("status") == "active", **(links or {})}})
-                    summaries.append(f"{existing['name']} is already in the business ({existing.get('status')})")
+                    summaries.append(f"{existing['name']} is already in the business ({existing.get('status')}); nothing new drafted")
                 elif has_scope(member, "manage_team"):
-                    m = await create_invite(org, member, a["name"], a.get("job") or "", a.get("member_type") or "team", a.get("phone"))
-                    people.append(m)
-                    cards.append({"card_id": new_id("crd"), "type": "invite", "status": "created", "data": {"member_id": m["member_id"], "name": m["name"], "job": m["job"],
-                                  "member_type": m["member_type"], "access": m["access"], "access_reason": m["access_reason"], **invite_links(org, m)}})
-                    summaries.append(f"Created an invite link for {m['name']} ({m['job']}). Access: {m['access_reason']}")
+                    cards.append(_draft("invite", {"name": a["name"].strip()[:80], "job": (a.get("job") or "").strip()[:80], "member_type": a.get("member_type") or "team", "phone": a.get("phone")}))
+                    summaries.append(f"DRAFTED an invite for {a['name']} ({a.get('job') or 'role not given'}) — created only when the user taps Confirm")
                 else:
                     ap = await create_approval(org, member, kind="other", title=f"Add {a['name']} ({a.get('job') or 'new person'}) to the team",
                                                payload={"action": "invite", "name": a["name"], "job": a.get("job"), "member_type": a.get("member_type") or "team"}, source=source)
                     cards.append({"card_id": new_id("crd"), "type": "approval", "status": ap["status"], "data": {"approval_id": ap["approval_id"], "title": ap["title"]}})
-                    summaries.append("Asked the owner to approve adding this person")
+                    summaries.append("EXECUTED: the user cannot add people, so an approval request was created for the owner")
             elif t == "message_person" and a.get("person") and a.get("text"):
                 p = find_person(people, a["person"], member)
-                if p and p["member_id"] != member["member_id"]:
-                    thread = await get_or_create_direct_thread(org["org_id"], member, p)
-                    msg = await post_thread_message(org, member, thread, a["text"], spot=False)
-                    cards.append({"card_id": new_id("crd"), "type": "message", "status": "sent", "data": {"to_member_id": p["member_id"], "to_name": p["name"],
-                                  "text": a["text"], "thread_id": thread["thread_id"], "deliveries": msg["deliveries"]}})
-                    summaries.append(f"Sent the message to {p['name']}")
+                if p and p["member_id"] != member["member_id"] and _partner_can_message(member, p):
+                    cards.append(_draft("message", {"to_member_id": p["member_id"], "to_name": p["name"], "text": a["text"][:1500]}))
+                    summaries.append(f"DRAFTED a message to {p['name']} (not sent — waits for Confirm): \"{a['text'][:300]}\"")
                 else:
-                    summaries.append(f"Could not find '{a['person']}' in the business, so nothing was sent")
+                    summaries.append(f"Could not find '{a['person']}' among the people this user can message, so nothing was drafted")
             elif t == "add_rule" and a.get("text"):
                 if has_scope(member, "manage_team"):
-                    r = await add_rule(org, member, a["text"], trigger=a.get("trigger") or "any", keyword=a.get("keyword"), notify_target=a.get("notify"))
-                    cards.append({"card_id": new_id("crd"), "type": "rule", "status": "saved", "data": {"rule_id": r["rule_id"], "text": r["text"]}})
-                    summaries.append(f"Saved a business rule: {r['text']}")
+                    temporary = a.get("rule_duration") == "temporary" or bool(a.get("until"))
+                    until = local_to_utc_iso(a.get("until"), org, default_hour=23) if a.get("until") else None
+                    cards.append(_draft("rule", {"text": a["text"][:600], "trigger": a.get("trigger") or "any", "keyword": a.get("keyword"), "notify": a.get("notify"),
+                                                "duration": "temporary" if temporary else "permanent", "until": until,
+                                                "scope_level": a.get("rule_scope") or "company", "applies_to": a.get("applies_to")}))
+                    summaries.append(f"DRAFTED a {'temporary' if temporary else 'permanent'} {a.get('rule_scope') or 'company'} rule (not saved — waits for Confirm): {a['text'][:200]}")
                 else:
-                    summaries.append("Only the owner can set business rules")
+                    summaries.append("Only the owner or someone who manages the team can set business rules; nothing was drafted")
             elif t == "request_approval":
                 if has_scope(member, "approve"):
                     continue
@@ -812,33 +925,40 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
                                            details=a.get("text") or "", amount=a.get("amount"), currency=a.get("currency"), source=source)
                 cards.append({"card_id": new_id("crd"), "type": "approval", "status": ap["status"], "data": {"approval_id": ap["approval_id"], "title": ap["title"],
                               "amount": ap.get("amount"), "currency": ap.get("currency"), "rule_text": ap.get("decision_text")}})
-                summaries.append("Allowed automatically by an existing rule: " + ap["decision_text"] if ap["status"] == "allowed_by_rule" else "Sent to the owner for approval")
+                summaries.append("EXECUTED: allowed automatically by an existing rule: " + ap["decision_text"] if ap["status"] == "allowed_by_rule" else "EXECUTED: approval request created and placed in the approvers' queue")
             elif t == "decide_approval" and a.get("approval_id") and a.get("decision"):
                 ap = await db.approvals.find_one({"org_id": org["org_id"], "approval_id": a["approval_id"]}, {"_id": 0})
-                if ap and has_scope(member, "approve") and ap["status"] == "pending":
-                    res = await decide_approval(org, member, ap, a["decision"], a.get("max_amount"), note=None)
-                    cards.append({"card_id": new_id("crd"), "type": "decision", "status": "applied", "data": {"approval_id": ap["approval_id"], "summary": res["summary"], "decision": a["decision"]}})
-                    summaries.append(f"Applied the decision. Repeat it back exactly: {res['summary']}")
+                if not has_scope(member, "approve"):
+                    summaries.append("This user cannot decide approvals; nothing was drafted")
+                elif ap and ap["status"] == "pending":
+                    cards.append(_draft("decision", {"approval_id": ap["approval_id"], "title": ap["title"], "requested_by_name": ap.get("requested_by_name"),
+                                                    "amount": ap.get("amount"), "currency": ap.get("currency"), "decision": a["decision"], "max_amount": a.get("max_amount"),
+                                                    "summary": decision_summary(ap, a["decision"], a.get("max_amount"))}))
+                    summaries.append(f"DRAFTED an approval decision (not applied — waits for Confirm): {decision_summary(ap, a['decision'], a.get('max_amount'))}")
+                else:
+                    summaries.append("That approval is not waiting any more; nothing was drafted")
             elif t == "update_item" and a.get("item_id") and a.get("status"):
                 it = await get_item_for(member, a["item_id"])
                 if it and can_edit_item(member, it):
-                    res = await set_item_status(org, member, it, a["status"], a.get("reason"), local_to_utc_iso(a.get("new_due_at"), org, 18), via=source.get("type", "chat"))
-                    cards.append({"card_id": new_id("crd"), "type": "update", "status": "applied", "data": {"item_id": it["item_id"], "title": it["title"], "new_status": a["status"],
-                                  "reason": a.get("reason"), "prev": res["prev"]}})
-                    summaries.append(f"Updated '{it['title']}' to {a['status']}")
-            elif t == "update_business" and is_owner(member):
+                    cards.append(_draft("update", {"item_id": it["item_id"], "title": it["title"], "new_status": a["status"], "reason": a.get("reason"),
+                                                  "new_due_at": local_to_utc_iso(a.get("new_due_at"), org, 18)}))
+                    summaries.append(f"DRAFTED a status change (not applied — waits for Confirm): '{it['title']}' → {a['status']}")
+                else:
+                    summaries.append("This user cannot change that item; nothing was drafted")
+            elif t == "update_business":
                 upd = {k: v for k, v in {"name": a.get("business_name"), "industry": a.get("industry"), "description": a.get("description"), "country": a.get("country")}.items() if v}
-                if upd:
-                    await db.orgs.update_one({"org_id": org["org_id"]}, {"$set": {**upd, "profile_learned": True}})
-                    org.update(upd)
-                    cards.append({"card_id": new_id("crd"), "type": "business", "status": "saved", "data": upd})
-                    summaries.append("Updated the business profile: " + ", ".join(f"{k}={v}" for k, v in upd.items()))
+                if upd and is_owner(member):
+                    cards.append(_draft("business", upd))
+                    summaries.append("DRAFTED a business-profile update (not saved — waits for Confirm): " + ", ".join(f"{k}={v}" for k, v in upd.items()))
+                elif upd:
+                    summaries.append("Only the owner can change the business profile; nothing was drafted")
             elif t == "remember_fact" and a.get("text"):
-                fid = new_id("fct")
-                await db.knowledge.insert_one({"fact_id": fid, "org_id": org["org_id"], "text": a["text"][:400], "source": source.get("type", "chat"),
-                                               "created_by": member["member_id"], "created_by_name": member["name"], "created_at": iso()})
-                cards.append({"card_id": new_id("crd"), "type": "fact", "status": "saved", "data": {"fact_id": fid, "text": a["text"][:400]}})
-                summaries.append(f"Remembered: {a['text'][:120]}")
+                if member.get("member_type") == "partner":
+                    summaries.append("External users cannot add to company memory; nothing was drafted")
+                else:
+                    cat = fact_category(a["text"], a.get("category"))
+                    cards.append(_draft("fact", {"text": a["text"][:400], "category": cat}))
+                    summaries.append(f"DRAFTED a K-MEMORY fact (not saved — waits for Confirm): {a['text'][:160]}")
             elif t == "handover" and (a.get("person") or a.get("name")):
                 a["person"] = a.get("person") or a.get("name")
                 p = find_person(people, a["person"], member)
@@ -877,10 +997,79 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
                     ap = await create_approval(org, member, kind="access", title=f"See {SCOPES[a['scope']].lower()}", scope=a["scope"],
                                                question=a.get("text") or "", source=source)
                     cards.append({"card_id": new_id("crd"), "type": "access_request", "status": "pending", "data": {"approval_id": ap["approval_id"], "scope": a["scope"], "label": SCOPES[a["scope"]]}})
-                summaries.append(f"The person lacks access to {SCOPES[a['scope']].lower()}. Do NOT answer that part. Say you've asked the owner.")
+                summaries.append(f"The user lacks access to {SCOPES[a['scope']].lower()}. Do NOT answer that part. EXECUTED: an access request is in the owner's queue.")
         except Exception as e:
             logger.exception("action %s failed: %s", t, e)
     return cards, summaries
+
+
+def draft_line(c: dict) -> str:
+    d = c.get("data") or {}
+    return {"message": f"Message to {d.get('to_name')}", "rule": f"Rule: {(d.get('text') or '')[:80]}", "fact": f"Remember: {(d.get('text') or '')[:80]}",
+            "decision": d.get("summary") or "Approval decision", "update": f"{d.get('title')} \u2192 {d.get('new_status')}",
+            "business": "Update business profile", "invite": f"Invite {d.get('name')}", "handover": f"Handover to {d.get('to_name')}"}.get(c["type"], c["type"])
+
+
+async def apply_draft(org: dict, member: dict, card: dict) -> Optional[str]:
+    """Executes a confirmed draft card. Re-checks permissions. Returns an error message or None."""
+    t, d = card["type"], card["data"]
+    if t == "message":
+        p = await db.members.find_one({"member_id": d["to_member_id"], "org_id": org["org_id"], "status": {"$in": ["active", "invited"]}}, {"_id": 0})
+        if not p or not _partner_can_message(member, p):
+            return "That person is no longer available to message."
+        thread = await get_or_create_direct_thread(org["org_id"], member, p)
+        sent = await post_thread_message(org, member, thread, d["text"], spot=False)
+        card["status"] = "sent"
+        card["data"] = {**d, "thread_id": thread["thread_id"], "deliveries": sent.get("deliveries")}
+    elif t == "rule":
+        if not has_scope(member, "manage_team"):
+            return "Only the owner or a team manager can set business rules."
+        expires = d.get("until") if d.get("duration") == "temporary" else None
+        r = await add_rule(org, member, d["text"], trigger=d.get("trigger") or "any", keyword=d.get("keyword"), notify_target=d.get("notify"),
+                           condition={"scope_level": d.get("scope_level") or "company", "applies_to": d.get("applies_to")}, expires_at=expires)
+        card["status"] = "saved"
+        card["data"] = {**d, "rule_id": r["rule_id"]}
+    elif t == "fact":
+        if member.get("member_type") == "partner":
+            return "External users cannot add to company memory."
+        fid = new_id("fct")
+        await db.knowledge.insert_one({"fact_id": fid, "org_id": org["org_id"], "text": d["text"][:400], "category": d.get("category") or fact_category(d["text"]),
+                                       "source": "chat (confirmed)", "confirmed": True, "created_by": member["member_id"], "created_by_name": member["name"], "created_at": iso()})
+        card["status"] = "saved"
+        card["data"] = {**d, "fact_id": fid}
+    elif t == "decision":
+        ap = await db.approvals.find_one({"org_id": org["org_id"], "approval_id": d["approval_id"]}, {"_id": 0})
+        if not has_scope(member, "approve"):
+            return "You can't decide approvals."
+        if not ap or ap["status"] != "pending":
+            return "This approval was already decided."
+        res = await decide_approval(org, member, ap, d["decision"], d.get("max_amount"), note=None)
+        card["status"] = "applied"
+        card["data"] = {**d, "summary": res["summary"]}
+    elif t == "update":
+        it = await get_item_for(member, d["item_id"])
+        if not it or not can_edit_item(member, it):
+            return "You can't change that item."
+        res = await set_item_status(org, member, it, d["new_status"], d.get("reason"), d.get("new_due_at"), via="chat")
+        card["status"] = "applied"
+        card["data"] = {**d, "prev": res["prev"]}
+    elif t == "business":
+        if not is_owner(member):
+            return "Only the owner can change the business profile."
+        upd = {k: v for k, v in d.items() if k in ("name", "industry", "description", "country") and v}
+        await db.orgs.update_one({"org_id": org["org_id"]}, {"$set": {**upd, "profile_learned": True}})
+        card["status"] = "saved"
+    elif t == "invite":
+        if not has_scope(member, "manage_team"):
+            return "Only the owner or a team manager can add people."
+        m = await create_invite(org, member, d["name"], d.get("job") or "", d.get("member_type") or "team", d.get("phone"))
+        card["status"] = "created"
+        card["data"] = {"member_id": m["member_id"], "name": m["name"], "job": m["job"], "member_type": m["member_type"],
+                        "access": m["access"], "access_reason": m["access_reason"], **invite_links(org, m)}
+    else:
+        return "Nothing to confirm."
+    await audit(org["org_id"], member["member_id"], f"draft_confirmed_{t}", {"card_id": card["card_id"]})
+    return None
 
 
 def _citations(text: str, sources: list) -> list:
@@ -910,12 +1099,14 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
         return
 
     cfg = await brain.get_brain_config()
-    people = await org_people(org["org_id"])
+    role = role_label(member)
+    people = visible_people(member, await org_people(org["org_id"]))
     open_items = await visible_open_items(member, 40)
     approvals = await pending_approvals_for(member)
-    rules = await active_rules(org["org_id"])
-    full_text = text + (f"\n\n{extra_context}" if extra_context else "")
-    analysis = await brain.analyze(org, member, full_text, people, open_items, approvals, rules, cfg)
+    rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
+    untrusted = (f"<untrusted_input source=\"attachments\">\n{extra_context[:3000]}\n</untrusted_input>" if extra_context else "")
+    full_text = text + (f"\n\n{untrusted}" if untrusted else "")
+    analysis = await brain.analyze(org, member, full_text, people, open_items, approvals, rules, cfg, role)
     source = {"type": channel, "msg_id": user_msg["msg_id"]}
     cards, summaries = await execute_actions(org, member, analysis, people, source)
     for a in attachments:
@@ -923,15 +1114,15 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
             cards.append({"card_id": new_id("crd"), "type": "doc", "status": "saved", "data": {"doc_id": a["doc_id"], "filename": a.get("filename"), "summary": a.get("summary", "")[:400]}})
     yield {"type": "cards", "cards": cards}
 
-    sources = await retrieve(org, member, analysis.get("search_query") or "", text, include_open=False)
+    sources = await retrieve(org, member, analysis.get("search_query") or "", text, include_open=True)
     live = await live_state(org, member)
     history = await _history(member)
-    rules_txt = "\n".join(f"- {r['text']}" for r in rules[:20])
-    extra = (f"\nBusiness rules to follow:\n{rules_txt}\n" if rules_txt else "") + (f"\nAttached content:\n{extra_context[:3000]}\n" if extra_context else "")
+    extra = (f"\nAttached content sent with this message:\n{untrusted}\n" if untrusted else "")
     if analysis.get("failed"):
-        extra += "\n(Understanding step failed; just answer helpfully and say nothing was saved.)"
+        extra += "\n(Understanding step failed; answer helpfully and say nothing was drafted or saved.)"
+    trusted = trusted_context(org, member, role)
     out = []
-    async for d in brain.stream_reply(org, member, text, cfg, sources, summaries, history, extra, live):
+    async for d in brain.stream_reply(org, member, text, cfg, sources, summaries, history, extra, live, trusted):
         out.append(d)
         yield {"type": "delta", "text": d}
     reply = "".join(out).strip()
@@ -984,9 +1175,18 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             await db.items.update_one({"item_id": card["item_id"], "org_id": org["org_id"]}, {"$set": {"deleted": True, "updated_at": iso()}})
             card["status"] = "pending"
             card.pop("item_id", None)
+    elif card["type"] in DRAFT_TYPES and card["status"] == "draft" and op in ("confirm", "dismiss"):
+        if op == "dismiss":
+            card["status"] = "dismissed"
+        else:
+            err = await apply_draft(org, member, card)
+            if err:
+                return {"error": "forbidden", "message": err}
     elif card["type"] == "handover" and op in ("confirm", "dismiss", "undo"):
         d = card["data"]
         if op == "confirm" and card["status"] == "pending":
+            if not has_scope(member, "manage_team"):
+                return {"error": "forbidden", "message": "Only the owner or a team manager can hand over responsibilities."}
             p = await db.members.find_one({"member_id": d["to_member_id"], "org_id": org["org_id"]}, {"_id": 0})
             if not p:
                 return {"error": "not_found"}
@@ -1012,6 +1212,10 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             await db.rules.update_one({"rule_id": d["rule_id"], "org_id": org["org_id"]}, {"$set": {"active": False, "removed_at": iso()}})
             card["status"] = "ended"
     elif op == "undo":
+        if card["type"] == "message":
+            return {"error": "forbidden", "message": "A sent message can't be unsent."}
+        if card["type"] == "business" and card["status"] == "saved":
+            return {"error": "forbidden", "message": "Change the business profile in Settings."}
         if card["type"] == "invite" and card["status"] == "created":
             await db.members.update_one({"member_id": card["data"]["member_id"], "status": "invited"}, {"$set": {"status": "removed"}})
             card["status"] = "undone"
@@ -1080,7 +1284,19 @@ async def handle_button(org: dict, member: dict, action_id: str, via: str = "wha
             await set_pending_state(member, "always_amount", ref)
             return f"Always allow {KIND_LABEL[ap['kind']]}s from {ap['requested_by_name']} under what amount? Reply with a number, e.g. {int(nice_ceiling(float(ap['amount'])))}."
         res = await decide_approval(org, member, ap, {"ap_once": "once", "ap_always": "always", "ap_deny": "deny"}[op])
-        return res["summary"] + " Reply UNDO to change it."
+        return res["summary"] + (" You can undo it any time in Approvals." if via == "app" else " Reply UNDO to change it.")
+    if op in ("confirm", "dismiss"):
+        msg = await db.brain_messages.find_one({"msg_id": ref, "member_id": member["member_id"]}, {"_id": 0})
+        if not msg:
+            return "I couldn't find that."
+        done, failed = [], []
+        for c in msg.get("cards", []):
+            if c["status"] == "draft" or (c["type"] == "handover" and c["status"] == "pending"):
+                r = await card_action(org, member, c["card_id"], op)
+                (failed if r.get("error") else done).append(r.get("message") or draft_line(c))
+        if op == "dismiss":
+            return "Okay, nothing was done."
+        return ("Done: " + "; ".join(done) + "." if done else "Nothing was done.") + (" Not done: " + "; ".join(failed) if failed else "")
     if op in ("save", "skip"):
         msg = await db.brain_messages.find_one({"msg_id": ref, "member_id": member["member_id"]}, {"_id": 0})
         if not msg:
@@ -1095,14 +1311,14 @@ async def handle_button(org: dict, member: dict, action_id: str, via: str = "wha
     return "Okay."
 
 
-async def handle_pending_reply(org: dict, member: dict, state: dict, text: str) -> str:
+async def handle_pending_reply(org: dict, member: dict, state: dict, text: str, via: str = "whatsapp") -> str:
     if state["kind"] == "reason":
         item = await get_item_for(member, state["ref"])
         if not item:
             return "I couldn't find that item."
         status = state["extra"].get("status", "delayed")
         # look for a date in the reason via the brain (best-effort)
-        await set_item_status(org, member, item, status, reason=text[:300], via="whatsapp")
+        await set_item_status(org, member, item, status, reason=text[:300], via=via)
         return f"Thanks. I've told {item.get('created_by_name') or 'them'}: {text[:120]}"
     if state["kind"] == "always_amount":
         ap = await db.approvals.find_one({"approval_id": state["ref"], "org_id": org["org_id"]}, {"_id": 0})

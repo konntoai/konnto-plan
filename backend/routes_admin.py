@@ -376,3 +376,11 @@ async def update_ann(ann_id: str, body: AnnIn, admin: dict = Depends(require_adm
 async def delete_ann(ann_id: str, admin: dict = Depends(require_admin)):
     await db.announcements.update_one({"announcement_id": ann_id}, {"$set": {"archived": True, "active": False}})
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- demo workspace
+@router.post("/admin/demo/reset")
+async def reset_demo(admin: dict = Depends(require_admin)):
+    """Rebuild the ready-made demo business (only touches the demo org)."""
+    import demo_account
+    return await demo_account.build_demo()

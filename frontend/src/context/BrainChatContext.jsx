@@ -103,6 +103,20 @@ export function BrainChatProvider({ children }) {
     }
   }, [api]);
 
+  /** Taps on a notice button (Done / Delayed / Allow once ...). The tap and KONNTO's answer join the chat. */
+  const pressButton = useCallback(async (msg, btn) => {
+    try {
+      const res = await api.post("/chat/actions", { action_id: btn.id, msg_id: msg.msg_id, label: btn.label });
+      setMessages((msgs) => [
+        ...msgs.map((m) => (m.msg_id === msg.msg_id ? { ...m, buttons_used: btn.id, buttons_used_label: btn.label } : m)),
+        ...(res.user_message ? [res.user_message] : []),
+        ...(res.message ? [res.message] : []),
+      ]);
+    } catch (e) {
+      toast.error(e.message);
+    }
+  }, [api]);
+
   const reset = useCallback(async () => {
     try {
       await api.post("/chat/reset", {});
@@ -113,7 +127,7 @@ export function BrainChatProvider({ children }) {
     }
   }, [api]);
 
-  const value = { messages, people, loading, sending, attachments, pendingUploads, uploadFile, removeAttachment, send, onCardAction, reset, reload: load };
+  const value = { messages, people, loading, sending, attachments, pendingUploads, uploadFile, removeAttachment, send, onCardAction, pressButton, reset, reload: load };
   return <BrainChatContext.Provider value={value}>{children}</BrainChatContext.Provider>;
 }
 

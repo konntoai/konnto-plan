@@ -328,6 +328,14 @@ KONNTO should:
 - seed: 3 approvals (₹42,000 / ₹8,500 / ₹6,800) + cash-on-hand demo fact.
 - Frontend: BrainChatContext (shared conversation), KBrainPanel floating dock/panel on all app pages except /app/chat, BrainComposer, BrainMessages, PersonaSelect, HandoverCard + persona card.
 
+## Phase 6 — K-BRAIN Master System Prompt ✅ IMPLEMENTED (testing pending in iteration_3)
+- `backend/kbrain_prompt.py`: MASTER_PROMPT (verbatim user spec) + APP_OPERATING_NOTES; reply_system = master prompt + style overlay (4 personas kept, tone only) + admin guidance + TRUSTED SERVER CONTEXT (workspace, user, derived role, granted/denied scopes, real capabilities) + LIVE STATE + K-MEMORY + ACTIONS.
+- Permissions enforced server-side: core.fact_scope_query (finance facts need money scope; partners see none), can_read_rules (partners none), engine.visible_people (partners see owner + inviter), item/doc scope queries, re-check at confirm time; /knowledge, /rules, /search scoped.
+- Draft-first (user choice): message, rule (temporary/permanent + scope), fact, approval decision, status change, business profile, invite → "draft" cards; POST /chat/cards/{id}/confirm|dismiss; apply_draft executes + audits; undo where reversible; WhatsApp Confirm/Dismiss buttons.
+- Memory: live_state adds projects, 14-day decisions, recent documents, activity log, facts with source/date; retrieve adds projects + past approvals; facts have category + confirmed; untrusted attachments wrapped in <untrusted_input>.
+- Frontend: react-markdown + remark-gfm rendering (BrainMarkdown), source chips, DraftCard (Confirm/Dismiss), Undo links, delivery status on sent messages.
+- Tests: /app/tests/kbrain_master.py, /app/tests/kbrain_permissions.py (team + partner prompt-injection: no leaks).
+
 ## 3) Next Actions (immediate)
 
 ### Phase 4 (Design) — P0
@@ -378,3 +386,10 @@ KONNTO should:
   - logs an audit event
 - Floating K-BRAIN panel works on all app pages (dark/light) and does not break existing flows.
 - No regressions in streaming, card actions, approvals, and work updates.
+
+---
+
+## Phase — Demo workspace + "what works / what doesn't" pass ✅ COMPLETED
+- `/app/backend/demo_account.py`: demo business "Mehra Build Supplies" with 3 sign-ins (owner / team lead / supplier); 8 people, 4 projects, 22 work items (overdue, stuck, delayed, dependencies, private note, done, cancelled), 9 approvals (pending + all decision types), 5 rules, 9 facts (finance + partner-shared), 4 documents (1 private), 5 team chats, K-BRAIN history with saved/draft/handover cards and notice buttons. Dates pinned to fixed IST times. Rebuild: `python demo_account.py` or admin `POST /api/admin/demo/reset`. Demo org never sends email.
+- Fixes found while using the demo: notice buttons now render & work in app chat (`POST /api/chat/actions` with msg_id, one answer only); Delayed/Need-help reason typed in app chat is captured; Today brief renders markdown; mobile brief overflow; partners no longer see all project names, the full staff list, or can open chats with arbitrary staff; open work/approvals are citable → source chips appear on live answers; inline [n] markers render as chips.
+- Tested: iteration_3 (73/74 → fixed) and iteration_4 (100%).

@@ -123,7 +123,7 @@ function ProposalCard({ card, people, onSave, onSkip, onUndo }) {
   );
 }
 
-function InviteCard({ card }) {
+function InviteCard({ card, onAction }) {
   const d = card.data || {};
   return (
     <div className="k-shimmer k-shimmer--calm" data-testid={`chat-card-invite-${card.card_id}`}>
@@ -132,6 +132,7 @@ function InviteCard({ card }) {
         <div className="mt-2.5 font-display font-bold text-[16px]">{d.name}</div>
         {d.job && <div className="text-sm text-muted-foreground">{d.job}</div>}
         {d.access_reason && <div className="mt-1.5 text-xs text-muted-foreground">{d.access_reason}</div>}
+        {card.status === "created" && <div className="mt-1"><UndoLink card={card} onAction={onAction} /></div>}
         {d.invite_url && (
           <div className="mt-3 space-y-2">
             <div className="flex gap-2">
@@ -158,6 +159,68 @@ function SimpleCard({ card, label, children }) {
     </div>
   );
 }
+
+const DRAFT_LABEL = {
+  message: "Message", rule: "Business rule", fact: "K-MEMORY fact", decision: "Approval decision",
+  update: "Status change", business: "Business profile", invite: "Invite",
+};
+
+function DraftBody({ card }) {
+  const d = card.data || {};
+  switch (card.type) {
+    case "message":
+      return (<><div className="text-xs text-muted-foreground">To <span className="font-semibold text-foreground">{d.to_name}</span></div>
+        <blockquote className="mt-1.5 rounded-xl border-l-2 border-primary/50 bg-[hsl(var(--surface-2))] px-3 py-2 text-sm whitespace-pre-wrap" data-testid="draft-message-text">{d.text}</blockquote></>);
+    case "rule":
+      return (<><div className="text-sm font-medium">{d.text}</div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <Meta icon={BookMarked} label="" value={d.duration === "temporary" ? "Temporary" : "Permanent"} />
+          <Meta icon={User} label="Applies to" value={d.scope_level === "company" || !d.scope_level ? "Whole company" : `${d.scope_level}${d.applies_to ? `: ${d.applies_to}` : ""}`} />
+          {d.until && <Meta icon={CalendarClock} label="Until" value={fmtWhen(d.until)} />}
+        </div></>);
+    case "fact":
+      return (<><div className="text-sm font-medium">{d.text}</div>{d.category && <div className="mt-1.5 eyebrow text-muted-foreground">{d.category}</div>}</>);
+    case "decision":
+      return (<><div className="text-sm font-medium">{d.summary}</div>
+        {d.amount != null && <div className="mt-2"><Meta icon={IndianRupee} label="Amount" value={money(d.amount, d.currency)} /></div>}</>);
+    case "update":
+      return <div className="text-sm">“{d.title}” → <span className="font-semibold">{d.new_status}</span>{d.reason ? ` — ${d.reason}` : ""}</div>;
+    case "business":
+      return <div className="text-sm">{Object.entries(d).map(([k, v]) => <div key={k}><span className="text-muted-foreground">{k}:</span> <span className="font-semibold">{String(v)}</span></div>)}</div>;
+    case "invite":
+      return <div className="text-sm"><span className="font-semibold">{d.name}</span>{d.job ? ` — ${d.job}` : ""} <span className="text-muted-foreground">({d.member_type === "partner" ? "partner" : "team"})</span></div>;
+    default:
+      return null;
+  }
+}
+
+function DraftCard({ card, onAction }) {
+  const [busy, setBusy] = useState(false);
+  const Icon = ICONS[card.type] || BookMarked;
+  const dismissed = card.status === "dismissed";
+  const run = async (op) => { setBusy(true); try { await onAction?.(card.card_id, op); } finally { setBusy(false); } };
+  return (
+    <div className={cn("rounded-2xl border p-4", dismissed ? "border-border bg-card/70 opacity-60" : "border-primary/35 bg-primary/[0.05] shadow-[0_18px_50px_-30px_hsl(var(--glow-blue))]")} data-testid={`chat-card-draft-${card.type}-${card.card_id}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="eyebrow text-primary flex items-center gap-2"><Icon className="h-3.5 w-3.5" /> K-BRAIN drafted · {DRAFT_LABEL[card.type] || card.type}</div>
+        {dismissed ? <TonePill tone="stuck" icon={X}>Dismissed</TonePill> : <TonePill tone="pending">Waiting for you</TonePill>}
+      </div>
+      <div className="mt-2.5"><DraftBody card={card} /></div>
+      {!dismissed ? (
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          <Button size="sm" disabled={busy} onClick={() => run("confirm")} className="h-10 rounded-full" data-testid={`draft-confirm-${card.card_id}`}><Check className="h-4 w-4" /> Confirm</Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => run("dismiss")} className="h-10 rounded-full" data-testid={`draft-dismiss-${card.card_id}`}><X className="h-4 w-4" /> Dismiss</Button>
+        </div>
+      ) : <div className="mt-2 text-sm text-muted-foreground">Nothing was done.</div>}
+    </div>
+  );
+}
+
+const UndoLink = ({ card, onAction }) => (
+  <button className="ml-2 inline-flex items-center gap-1 text-primary font-semibold text-xs hover:underline" onClick={() => onAction?.(card.card_id, "undo")} data-testid={`card-undo-${card.card_id}`}>
+    <Undo2 className="h-3 w-3" /> Undo
+  </button>
+);
 
 function HandoverCard({ card, onAction }) {
   const d = card.data || {};
@@ -235,19 +298,25 @@ function HandoverCard({ card, onAction }) {
 
 export function BrainCard({ card, people, onAction }) {
   const t = card.type;
+  if (card.status === "draft" || (card.status === "dismissed" && DRAFT_LABEL[t])) return <DraftCard card={card} onAction={onAction} />;
   if (t === "proposal") return <ProposalCard card={card} people={people} onSave={(id, edits) => onAction?.(id, "save", edits)} onSkip={(id) => onAction?.(id, "skip")} onUndo={(id) => onAction?.(id, "undo")} />;
-  if (t === "invite") return <InviteCard card={card} />;
+  if (t === "invite" && card.status === "undone") return <SimpleCard card={card} label="Invite cancelled">{card.data?.name}</SimpleCard>;
+  if (t === "invite") return <InviteCard card={card} onAction={onAction} />;
   if (t === "approval") {
     const d = card.data || {};
     return <SimpleCard card={card} label={card.status === "allowed_by_rule" ? "Approved by rule" : "Sent for approval"}>{d.title}{d.rule_text ? ` — ${d.rule_text}` : ""}</SimpleCard>;
   }
   if (t === "access_request") return <SimpleCard card={card} label="Access request sent">We asked the owner to grant: <span className="font-semibold text-foreground">{card.data?.label}</span>.</SimpleCard>;
-  if (t === "rule") return <SimpleCard card={card} label="Rule saved">{card.data?.text}</SimpleCard>;
-  if (t === "fact") return <SimpleCard card={card} label="Remembered">{card.data?.text}</SimpleCard>;
-  if (t === "decision") return <SimpleCard card={card} label="Decision applied">{card.data?.summary}</SimpleCard>;
-  if (t === "message") return <SimpleCard card={card} label={`Sent to ${card.data?.to_name}`}>“{card.data?.text}”</SimpleCard>;
+  const undone = card.status === "undone";
+  if (t === "rule") return <SimpleCard card={card} label={undone ? "Rule removed" : "Rule saved"}>{card.data?.text}{!undone && <UndoLink card={card} onAction={onAction} />}</SimpleCard>;
+  if (t === "fact") return <SimpleCard card={card} label={undone ? "Forgotten" : "Saved to K-MEMORY"}>{card.data?.text}{!undone && <UndoLink card={card} onAction={onAction} />}</SimpleCard>;
+  if (t === "decision") return <SimpleCard card={card} label={undone ? "Decision undone" : "Decision applied"}>{card.data?.summary}{!undone && <UndoLink card={card} onAction={onAction} />}</SimpleCard>;
+  if (t === "message") {
+    const del = (card.data?.deliveries || []).map((x) => `In app: ${x.app ? "delivered" : "waits until they join"} · WhatsApp: ${x.whatsapp || "not sent"}`).join(" | ");
+    return <SimpleCard card={card} label={`Sent to ${card.data?.to_name}`}>“{card.data?.text}”{del && <div className="mt-1 font-mono text-[10px] text-muted-foreground" data-testid="message-delivery-status">{del}</div>}</SimpleCard>;
+  }
   if (t === "business") return <SimpleCard card={card} label="Business profile updated">{Object.entries(card.data || {}).filter(([k]) => k !== "owner_user_id").map(([k, v]) => <div key={k}><span className="text-muted-foreground">{k}:</span> <span className="font-semibold">{String(v)}</span></div>)}</SimpleCard>;
-  if (t === "update") return <SimpleCard card={card} label="Work item updated">“{card.data?.title}” → <span className="font-semibold">{card.data?.new_status}</span></SimpleCard>;
+  if (t === "update") return <SimpleCard card={card} label={undone ? "Change undone" : "Work item updated"}>“{card.data?.title}” → <span className="font-semibold">{card.data?.new_status}</span>{!undone && <UndoLink card={card} onAction={onAction} />}</SimpleCard>;
   if (t === "handover") return <HandoverCard card={card} onAction={onAction} />;
   if (t === "persona") return <SimpleCard card={card} label="Conversation style">K-BRAIN now talks like your <span className="font-semibold">{card.data?.label}</span>. Change it any time from the top of the chat.</SimpleCard>;
   if (t === "doc") return <SimpleCard card={card} label="Document saved">{card.data?.filename}{card.data?.summary ? ` — ${card.data.summary}` : ""}</SimpleCard>;

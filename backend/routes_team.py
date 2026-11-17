@@ -34,6 +34,7 @@ async def scopes():
 async def list_members(ctx: dict = Depends(get_ctx)):
     m, org = ctx["member"], ctx["org"]
     members = await db.members.find({"org_id": org["org_id"], "status": {"$in": ["active", "invited"]}}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    members = engine.visible_people(m, members)  # external partners only see the owner and whoever brought them in
     return {"members": [_present_member(x, m, org) for x in members], "me": m["member_id"], "can_manage": has_scope(m, "manage_team"),
             "is_owner": is_owner(m), "whatsapp_connected": wa_configured()}
 
@@ -188,6 +189,7 @@ async def create_thread(body: ThreadIn, ctx: dict = Depends(get_ctx)):
     m = ctx["member"]
     ids = [i for i in dict.fromkeys(body.member_ids) if i != m["member_id"]]
     others = await db.members.find({"member_id": {"$in": ids}, "org_id": m["org_id"], "status": {"$in": ["active", "invited"]}}, {"_id": 0}).to_list(100)
+    others = [o for o in engine.visible_people(m, others) if o["member_id"] != m["member_id"]]
     if not others:
         raise HTTPException(400, "Pick at least one person")
     if len(others) == 1 and not body.name:

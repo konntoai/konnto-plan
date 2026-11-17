@@ -1,6 +1,6 @@
 """Demo seed: populate a fresh org with sample projects, tasks, approvals, team members and a direct thread."""
 from datetime import timedelta
-from core import db, now, iso, new_id, short_code, SCOPES, norm_phone
+from core import db, now, iso, new_id, short_code, SCOPES, norm_phone, fact_category
 import engine
 
 SAMPLE_PEOPLE = [
@@ -205,6 +205,8 @@ async def seed_demo_org(org: dict, owner_member: dict) -> dict:
             "fact_id": new_id("fct"),
             "org_id": org["org_id"],
             "text": text,
+            "category": fact_category(text),
+            "confirmed": True,
             "source": "demo_seed",
             "created_by": owner_member["member_id"],
             "created_by_name": owner_member["name"],

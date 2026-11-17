@@ -219,8 +219,12 @@ async def _handle_inbound(m: dict, value: dict):
         if c["type"] == "invite" and c["data"].get("invite_url"):
             reply += f"\n\nInvite link for {c['data']['name']}: {c['data']['invite_url']}"
     pending = [c for c in final.get("cards", []) if c["type"] == "proposal" and c["status"] == "pending"]
+    drafts = [c for c in final.get("cards", []) if c["status"] == "draft" or (c["type"] == "handover" and c["status"] == "pending")]
     buttons = None
-    if pending:
+    if drafts and not pending:
+        reply += "\n\nWaiting for your confirmation:\n" + "\n".join(f"- {engine.draft_line(c)}" for c in drafts[:4])
+        buttons = [{"id": f"confirm:{final['msg_id']}", "label": "Confirm"}, {"id": f"dismiss:{final['msg_id']}", "label": "Dismiss"}]
+    elif pending:
         lines = "\n".join(f"- {c['data']['kind'].title()}: {c['data']['title']}" for c in pending[:4])
         reply += f"\n\n{lines}"
         buttons = [{"id": f"save:{final['msg_id']}", "label": "Save"}, {"id": f"skip:{final['msg_id']}", "label": "Skip"}]

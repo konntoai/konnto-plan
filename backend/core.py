@@ -268,6 +268,29 @@ def doc_scope_query(member: dict) -> dict:
     return {**base, "uploaded_by": mid}
 
 
+FINANCE_WORDS = re.compile(r"\b(cash|bank|revenue|profit|margin|margins|loan|loans|salary|salaries|payroll|turnover|lakh|lakhs|crore|crores|receivable|receivables|payable|payables|overdraft|ebitda|gst|tax|invoice total|balance)\b", re.I)
+
+
+def fact_category(text: str, given: Optional[str] = None) -> str:
+    if given:
+        return given
+    return "finance" if FINANCE_WORDS.search(text or "") else "other"
+
+
+def fact_scope_query(member: dict) -> dict:
+    """Business memory (knowledge facts) a member may read. Enforced server-side, never by the prompt."""
+    base = {"org_id": member["org_id"], "deleted": {"$ne": True}}
+    if member.get("member_type") == "partner":
+        return {**base, "shared_with_partners": True}
+    if not has_scope(member, "money"):
+        return {**base, "category": {"$ne": "finance"}, "text": {"$not": FINANCE_WORDS}}
+    return base
+
+
+def can_read_rules(member: dict) -> bool:
+    return member.get("member_type") != "partner"
+
+
 def redact_item(item: dict, member: dict) -> dict:
     if item.get("amount") is not None and not has_scope(member, "money") and member["member_id"] not in (item.get("created_by"), item.get("assignee_id")):
         item = {**item, "amount": None, "amount_hidden": True}

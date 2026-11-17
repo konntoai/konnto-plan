@@ -17,7 +17,7 @@ const SUGGESTIONS = [
 
 export default function ChatPage() {
   const { me } = useMe();
-  const { messages, people, loading, send, sending, onCardAction } = useBrainChat();
+  const { messages, people, loading, send, sending, onCardAction, pressButton } = useBrainChat();
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export default function ChatPage() {
             <div className="space-y-6">
               {messages.map((m) => (
                 <div key={m.msg_id}>
-                  {m.role === "user" ? <UserBubble msg={m} /> : <AssistantBubble msg={m} people={people} onCardAction={onCardAction} />}
+                  {m.role === "user" ? <UserBubble msg={m} /> : <AssistantBubble msg={m} people={people} onCardAction={onCardAction} onButton={pressButton} />}
                 </div>
               ))}
             </div>
