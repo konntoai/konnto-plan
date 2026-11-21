@@ -139,6 +139,11 @@ async def _handle_inbound(m: dict, value: dict):
         await _reply(wa_id, f"Hi{(' ' + profile.split()[0]) if profile else ''}! I'm KONNTO AI. To start, sign up here: {app_link('/sign-up')} — or ask your business for an invite link.")
         return
 
+    if not member.get("wa_opt_in"):  # they messaged us first: that is their WhatsApp opt-in
+        await db.members.update_many({"phone": f"+{wa_id}", "status": "active", "wa_opt_in": {"$ne": True}},
+                                     {"$set": {"wa_opt_in": True, "wa_opt_in_at": iso(), "wa_opt_in_source": "whatsapp_inbound"}})
+        member["wa_opt_in"] = True
+
     # button replies (session interactive or template quick reply)
     reply_id = None
     if typ == "interactive":

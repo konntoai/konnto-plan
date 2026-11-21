@@ -1,0 +1,59 @@
+{
+  "summary": "WhatsApp Go-Live Testing Complete: All phone editing, opt-in, admin endpoints, and template generation features tested successfully. Meta WhatsApp keys are intentionally missing (expected 'not connected' state).",
+  "backend_issues": {
+    "critical_bugs": [],
+    "flaky_endpoints": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: PATCH /api/members/{id} with valid phone (+91 90000 11122) - normalizes to +digits, sets wa_opt_in=false",
+    "Backend: PATCH /api/members/{id} with invalid phone (123) - returns 400 with error message",
+    "Backend: PATCH /api/members/{id} with empty phone - clears phone successfully",
+    "Backend: PATCH /api/members/{id} as Supplier - returns 403 (permission denied)",
+    "Backend: Inbound WhatsApp opt-in - wa_opt_in becomes True when member messages KONNTO",
+    "Backend: Inbound WhatsApp opt-in - wa_opt_in_source set to 'whatsapp_inbound'",
+    "Backend: GET /api/admin/whatsapp/check returns 403 for non-admin (owner)",
+    "Backend: POST /api/admin/whatsapp/templates/submit returns 403 for non-admin",
+    "Backend: POST /api/admin/whatsapp/test returns 403 for non-admin",
+    "Backend: wa_setup.check() returns configured=False with 5 missing items (expected)",
+    "Backend: wa_setup.submit_templates() returns ok=False with 'Connect WhatsApp first' error",
+    "Backend: wa_setup.send_test() returns ok=False with 'not connected' error",
+    "Backend: wa_setup._template_body() generates valid Meta template payloads for all 7 WA_TEMPLATES",
+    "Backend: All 7 templates (konnto_welcome, konnto_reminder, konnto_task, konnto_message, konnto_approval, konnto_brief, konnto_login_code) have correct category, components, and examples",
+    "Backend: konnto_login_code template has OTP COPY_CODE button (AUTHENTICATION category)",
+    "Backend: All UTILITY templates have BODY component with example.body_text matching {{n}} variables",
+    "Backend: demo_account.py TEST_PHONES contains +919999912345 and +919999900000",
+    "Backend: demo_account.py KEPT_PHONES logic preserves real numbers across rebuilds",
+    "Frontend: Login as owner (demo.owner+clerk_test@konnto.ai) successful",
+    "Frontend: Team page navigation and loading successful",
+    "Frontend: Open member settings sheet (data-testid=team-edit-member) for Priya Nair",
+    "Frontend: Phone input field (data-testid=member-edit-phone) accepts valid phone",
+    "Frontend: WhatsApp state message (data-testid=member-wa-state) shows 'Waiting for Priya to send \"hi\" to the KONNTO number'",
+    "Frontend: Phone number saves successfully with success toast",
+    "Frontend: Phone number persists after save and reopen (+919000011122)",
+    "Frontend: WhatsApp waiting badge (data-testid=team-member-wa-waiting) appears in member row",
+    "Frontend: Invalid phone (123) shows error toast 'Enter the full WhatsApp number with country code'",
+    "Frontend: Clearing phone field saves successfully",
+    "Frontend: Regression - Chat approval notice buttons (Allow once, Always allow, Don't allow) present and functional",
+    "Frontend: Regression - Draft confirm cards (Confirm, Dismiss buttons) present in chat",
+    "Frontend: Regression - Morning brief with handover card displays correctly"
+  ],
+  "test_report_links": [
+    "/app/backend_test_whatsapp_golive.py"
+  ],
+  "success_percentage": {
+    "backend": "100% (64/64 tests passed)",
+    "frontend": "100% (all UI flows working)",
+    "integration": "100% (phone editing, opt-in, admin endpoints all working)"
+  },
+  "updated_files": [
+    "/app/backend_test_whatsapp_golive.py"
+  ],
+  "action_item_for_main_agent": "",
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "false"
+}

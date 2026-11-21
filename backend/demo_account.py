@@ -53,11 +53,20 @@ def _h(by: str, text: str, at) -> dict:
     return {"at": iso(at), "by": by, "text": text}
 
 
+TEST_PHONES = {"+919999912345", "+919999900000"}
+KEPT_PHONES = {}  # real WhatsApp numbers added to demo people survive a rebuild
+
+
 async def _wipe_previous():
     old = await db.orgs.find({"demo_key": DEMO_KEY}, {"_id": 0, "org_id": 1}).to_list(20)
     ids = [o["org_id"] for o in old]
+    KEPT_PHONES.clear()
     if not ids:
         return 0
+    async for m in db.members.find({"org_id": {"$in": ids}, "phone": {"$nin": [None, ""]}}, {"_id": 0, "name": 1, "phone": 1, "wa_opt_in": 1, "wa_opt_in_at": 1, "wa_opt_in_source": 1}):
+        if "".join(ch for ch in m["phone"] if ch.isdigit()).startswith("9198000001") or m["phone"] in TEST_PHONES:
+            continue  # old made-up demo numbers / test numbers are never kept
+        KEPT_PHONES[m["name"]] = {k: m.get(k) for k in ("phone", "wa_opt_in", "wa_opt_in_at", "wa_opt_in_source")}
     for c in ORG_COLLECTIONS:
         await db[c].delete_many({"org_id": {"$in": ids}})
     await db.orgs.delete_many({"org_id": {"$in": ids}})
@@ -103,6 +112,9 @@ async def build_demo(create_logins: bool = True) -> dict:
              "access_reason": {"owner": "Owner — sees everything.", "team": f"Set for a {job}.", "partner": "External partner — only their own work."}[mtype],
              "status": status, "wa_opt_in": False, "manager_id": None, "joined_via": "demo", "created_at": iso(ref - timedelta(days=days_ago)),
              "joined_at": iso(ref - timedelta(days=days_ago)) if status == "active" else None}
+        m["phone"] = None  # no made-up numbers: real ones are added from Team (and kept across rebuilds)
+        if name in KEPT_PHONES:
+            m.update(KEPT_PHONES[name])
         if persona:
             m["brain_persona"] = persona
         m.update(extra or {})
@@ -129,6 +141,8 @@ async def build_demo(create_logins: bool = True) -> dict:
                 "$setOnInsert": {"user_id": uids[key], "created_at": iso(), "auth": "clerk"},
                 "$set": {"email": DEMO_USERS[key]["email"], "name": m["name"], "role": "member", "env": ENV, "whatsapp": m["phone"],
                          "current_org_id": org_id, "is_demo": True}}, upsert=True)
+            if not m.get("phone"):
+                await db.users.update_one({"user_id": uids[key]}, {"$unset": {"whatsapp": ""}})
 
     # ---- projects ----
     projects = {}

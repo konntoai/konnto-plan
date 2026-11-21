@@ -261,7 +261,7 @@ async def get_settings(admin: dict = Depends(require_admin)):
     from core import app_link
     return {"settings": s, "whatsapp": {"configured": wa_configured(), "display_number": c["display"] or None,
                                         "webhook_url": app_link("/api/webhooks/whatsapp"), "verify_token": c["verify"],
-                                        "app_secret_set": bool(c["app_secret"]),
+                                        "app_secret_set": bool(c["app_secret"]), "waba_id_set": bool(c["waba_id"]),
                                         "templates": [{"name": k, **v} for k, v in WA_TEMPLATES.items()]}}
 
 
@@ -384,3 +384,27 @@ async def reset_demo(admin: dict = Depends(require_admin)):
     """Rebuild the ready-made demo business (only touches the demo org)."""
     import demo_account
     return await demo_account.build_demo()
+
+
+# ---------------------------------------------------------------- WhatsApp go-live
+class WaTestIn(BaseModel):
+    phone: str
+    text: Optional[str] = None
+
+
+@router.get("/admin/whatsapp/check")
+async def wa_check(admin: dict = Depends(require_admin)):
+    import wa_setup
+    return await wa_setup.check()
+
+
+@router.post("/admin/whatsapp/templates/submit")
+async def wa_submit_templates(admin: dict = Depends(require_admin)):
+    import wa_setup
+    return await wa_setup.submit_templates()
+
+
+@router.post("/admin/whatsapp/test")
+async def wa_test(body: WaTestIn, admin: dict = Depends(require_admin)):
+    import wa_setup
+    return await wa_setup.send_test(body.phone, body.text)

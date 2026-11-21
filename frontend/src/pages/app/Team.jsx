@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Users, UserPlus, Loader2, Copy, Link as LinkIcon, MessageSquare, Trash2, Shield, Settings2 } from "lucide-react";
+import { Users, UserPlus, Loader2, Copy, Link as LinkIcon, MessageSquare, Trash2, Shield, Settings2, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
@@ -65,13 +65,13 @@ function InviteDialog({ onInvited }) {
 
 function MemberEditor({ member, onClose, onChange, scopes, canManage }) {
   const api = useApi();
-  const [form, setForm] = useState({ name: member.name, job: member.job, member_type: member.member_type, access: new Set(member.access || []) });
+  const [form, setForm] = useState({ name: member.name, job: member.job, member_type: member.member_type, phone: member.phone || "", access: new Set(member.access || []) });
   const [busy, setBusy] = useState(false);
   const toggleAccess = (s) => { const n = new Set(form.access); n.has(s) ? n.delete(s) : n.add(s); setForm({ ...form, access: n }); };
   const save = async () => {
     setBusy(true);
     try {
-      await api.patch(`/members/${member.member_id}`, { name: form.name, job: form.job, member_type: form.member_type, access: Array.from(form.access) });
+      await api.patch(`/members/${member.member_id}`, { name: form.name, job: form.job, member_type: form.member_type, phone: form.phone, access: Array.from(form.access) });
       toast.success("Saved");
       onChange?.(); onClose();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
@@ -94,6 +94,15 @@ function MemberEditor({ member, onClose, onChange, scopes, canManage }) {
         <div className="space-y-3">
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="member-edit-name" />
           <Input value={form.job || ""} onChange={(e) => setForm({ ...form, job: e.target.value })} placeholder="Role or job" data-testid="member-edit-job" />
+          <div>
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="WhatsApp number, e.g. +91 98765 43210" inputMode="tel" data-testid="member-edit-phone" />
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="member-wa-state">
+              <Phone className="h-3.5 w-3.5" />
+              {!member.phone ? "No WhatsApp number yet."
+                : member.wa_opt_in ? "WhatsApp is on — KONNTO messages reach this phone."
+                : `Waiting for ${member.name.split(" ")[0]} to send "hi" to the KONNTO number — that switches WhatsApp on.`}
+            </div>
+          </div>
           <Select value={form.member_type} onValueChange={(v) => setForm({ ...form, member_type: v })} disabled={member.member_type === "owner"}>
             <SelectTrigger data-testid="member-edit-type"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="team">Team member</SelectItem><SelectItem value="partner">Partner</SelectItem></SelectContent>
@@ -174,7 +183,9 @@ export default function TeamPage() {
                 </div>
                 <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
                   {m.has_app && <span className="rounded-full border border-primary/20 bg-accent/60 text-accent-foreground px-2 py-0.5">App</span>}
-                  {m.has_whatsapp && <span className="rounded-full border border-primary/20 bg-accent/60 text-accent-foreground px-2 py-0.5">WhatsApp</span>}
+                  {m.has_whatsapp && (m.wa_opt_in
+                    ? <span className="rounded-full border border-primary/20 bg-accent/60 text-accent-foreground px-2 py-0.5" data-testid="team-member-wa-on">WhatsApp</span>
+                    : <span className="rounded-full border border-dashed border-border px-2 py-0.5" title="Number added — waiting for them to message KONNTO" data-testid="team-member-wa-waiting">WhatsApp · waiting</span>)}
                 </div>
                 {m.member_id !== data.me && <Button size="sm" variant="outline" onClick={() => openDirect(m.member_id)} data-testid="team-direct-chat"><MessageSquare className="h-4 w-4" /></Button>}
                 <Button size="sm" variant="ghost" onClick={() => setEditId(m.member_id)} data-testid="team-edit-member"><Settings2 className="h-4 w-4" /></Button>

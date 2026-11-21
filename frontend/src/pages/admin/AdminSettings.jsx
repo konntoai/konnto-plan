@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Save, Copy, Phone, Check, X } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PageHeader, SectionCard, TonePill } from "@/components/common";
+import { PageHeader, SectionCard } from "@/components/common";
+import { AdminWhatsApp } from "@/pages/admin/AdminWhatsApp";
 import { useApi } from "@/lib/api";
 
 export default function AdminSettings() {
@@ -25,8 +26,6 @@ export default function AdminSettings() {
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
-  const copy = (v) => { navigator.clipboard.writeText(v); toast.success("Copied"); };
-
   if (!data) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   return (
@@ -40,20 +39,7 @@ export default function AdminSettings() {
           <label>WhatsApp messages / month<Input className="mt-1" type="number" value={form.default_monthly_whatsapp} onChange={(e) => setForm({ ...form, default_monthly_whatsapp: e.target.value })} data-testid="admin-default-wa" /></label>
         </div>
       </SectionCard>
-      <SectionCard title="WhatsApp Business API" testid="admin-wa-card">
-        <div className="flex items-center gap-2 text-sm">
-          {data.whatsapp.configured
-            ? <TonePill tone="done" icon={Check}>Connected</TonePill>
-            : <TonePill tone="due" icon={X}>Not connected</TonePill>}
-          <span className="text-muted-foreground"><Phone className="h-3.5 w-3.5 inline mr-1" /> {data.whatsapp.display_number || "No number set"}</span>
-        </div>
-        <div className="mt-3 space-y-2 text-sm">
-          <label className="block text-xs text-muted-foreground">Webhook URL</label>
-          <div className="flex gap-2"><Input value={data.whatsapp.webhook_url || ""} readOnly data-testid="admin-wa-webhook" /><Button size="icon" variant="outline" aria-label="Copy" onClick={() => copy(data.whatsapp.webhook_url)}><Copy className="h-4 w-4" /></Button></div>
-          <label className="block text-xs text-muted-foreground">Verify token</label>
-          <div className="flex gap-2"><Input value={data.whatsapp.verify_token || ""} readOnly data-testid="admin-wa-verify" /><Button size="icon" variant="outline" aria-label="Copy" onClick={() => copy(data.whatsapp.verify_token)}><Copy className="h-4 w-4" /></Button></div>
-        </div>
-      </SectionCard>
+      <AdminWhatsApp wa={data.whatsapp} />
     </div>
   );
 }

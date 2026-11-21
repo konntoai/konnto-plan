@@ -64,6 +64,7 @@ class MemberPatch(BaseModel):
     access: Optional[List[str]] = None
     manager_id: Optional[str] = None
     member_type: Optional[str] = None
+    phone: Optional[str] = None
 
 
 @router.patch("/members/{member_id}")
@@ -85,6 +86,12 @@ async def patch_member(member_id: str, body: MemberPatch, ctx: dict = Depends(ge
         upd["member_type"] = body.member_type
     if body.manager_id is not None:
         upd["manager_id"] = body.manager_id or None
+    if body.phone is not None and norm_phone(body.phone) != (target.get("phone") or ""):
+        phone = norm_phone(body.phone)
+        if phone and len(phone) < 9:
+            raise HTTPException(400, "Enter the full WhatsApp number with country code")
+        upd["phone"] = phone or None
+        upd["wa_opt_in"] = False  # they switch WhatsApp on themselves by messaging KONNTO first
     if body.access is not None and not is_owner(target):
         new_access = [s for s in body.access if s in SCOPES]
         if not is_owner(m) and set(new_access) & SENSITIVE_SCOPES - set(target.get("access") or []):

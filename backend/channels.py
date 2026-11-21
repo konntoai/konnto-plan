@@ -150,6 +150,7 @@ def wa_cfg() -> dict:
         "verify": os.environ.get("META_WEBHOOK_VERIFY_TOKEN", ""),
         "display": digits(os.environ.get("META_DISPLAY_NUMBER", "")),
         "version": os.environ.get("META_GRAPH_VERSION", "v23.0"),
+        "waba_id": os.environ.get("META_WABA_ID", ""),
     }
 
 
