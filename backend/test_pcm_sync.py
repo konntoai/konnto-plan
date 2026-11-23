@@ -1,13 +1,4 @@
 import asyncio
-import sys
-import types
-
-core_stub = types.ModuleType('core')
-core_stub.db = None
-core_stub.iso = lambda value=None: '2026-11-24T00:00:00Z'
-core_stub.now = lambda: None
-sys.modules.setdefault('core', core_stub)
-
 import pcm_sync
 
 
