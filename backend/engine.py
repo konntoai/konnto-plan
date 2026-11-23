@@ -611,8 +611,13 @@ async def retrieve(org: dict, member: dict, query: str, text: str, include_open:
             add("document", d["doc_id"], d["filename"], f"{d.get('summary', '')[:200]} {kd} {_snippet(d.get('text', ''), words)}", f"/app/documents?doc={d['doc_id']}")
         fq = fact_scope_query(member)
         fq["$and"] = [{"text": rx}] + ([{"text": fq.pop("text")}] if "text" in fq else [])
-        for f in await db.knowledge.find(fq, {"_id": 0}).to_list(6):
-            add("fact", f["fact_id"], f["text"][:80], f"{f['text']} (source: {f.get('source') or 'chat'}, added by {f.get('created_by_name') or '-'} on {fmt_local(f.get('created_at'), org)})", "/app/knowledge")
+        for f in await db.knowledge.find(fq, {"_id": 0}).sort([("updated_at", -1), ("created_at", -1)]).to_list(6):
+            evidence = f.get("evidence_type") or "legacy_unclassified"
+            verification = f.get("verification_status") or "legacy_status_unknown"
+            provenance = (f"evidence: {evidence}; verification: {verification}; "
+                          f"source: {f.get('source') or 'unspecified'}; "
+                          f"added by {f.get('created_by_name') or '-'} on {fmt_local(f.get('created_at'), org) or 'unknown date'}")
+            add("fact", f["fact_id"], f["text"][:80], f"{f['text']} ({provenance})", "/app/knowledge")
         for pj in await db.projects.find({"org_id": org["org_id"], "name": rx}, {"_id": 0}).to_list(3):
             its = await db.items.find({**item_scope_query(member), "project_id": pj["project_id"]}, {"_id": 0, "history": 0}).to_list(30)
             if its or has_scope(member, "team_work"):
@@ -971,8 +976,11 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
                     summaries.append("External users cannot add to company memory; nothing was drafted")
                 else:
                     cat = fact_category(a["text"], a.get("category"))
-                    cards.append(_draft("fact", {"text": a["text"][:400], "category": cat}))
-                    summaries.append(f"DRAFTED a K-MEMORY fact (not saved — waits for Confirm): {a['text'][:160]}")
+                    # Memory writes remain confirmation-gated. The category is descriptive;
+                    # provenance and verification state are assigned by the server on save.
+                    cards.append(_draft("fact", {"text": a["text"][:400], "category": cat,
+                                                 "evidence_type": "user_confirmed_fact"}))
+                    summaries.append(f"DRAFTED a K-MEMORY fact for confirmation (not yet saved): {a['text'][:160]}")
             elif t == "handover" and (a.get("person") or a.get("name")):
                 a["person"] = a.get("person") or a.get("name")
                 p = find_person(people, a["person"], member)
@@ -1046,11 +1054,34 @@ async def apply_draft(org: dict, member: dict, card: dict) -> Optional[str]:
     elif t == "fact":
         if member.get("member_type") == "partner":
             return "External users cannot add to company memory."
-        fid = new_id("fct")
-        await db.knowledge.insert_one({"fact_id": fid, "org_id": org["org_id"], "text": d["text"][:400], "category": d.get("category") or fact_category(d["text"]),
-                                       "source": "chat (confirmed)", "confirmed": True, "created_by": member["member_id"], "created_by_name": member["name"], "created_at": iso()})
-        card["status"] = "saved"
-        card["data"] = {**d, "fact_id": fid}
+        fact_text = (d.get("text") or "").strip()[:400]
+        if not fact_text:
+            return "The memory entry is empty."
+        # Idempotency: confirming the same active fact twice must not create duplicates.
+        existing = await db.knowledge.find_one({"org_id": org["org_id"], "text": fact_text,
+                                                "deleted": {"$ne": True}}, {"_id": 0})
+        if existing:
+            card["status"] = "saved"
+            card["data"] = {**d, "fact_id": existing["fact_id"], "already_exists": True}
+        else:
+            fid = new_id("fct")
+            created = iso()
+            await db.knowledge.insert_one({
+                "fact_id": fid, "org_id": org["org_id"], "text": fact_text,
+                "category": d.get("category") or fact_category(fact_text),
+                "source": "chat (user confirmed)",
+                "source_type": "conversation",
+                "evidence_type": "user_confirmed_fact",
+                "verification_status": "user_confirmed_not_independently_verified",
+                "confidence": "user_attested",
+                "visibility": "org",
+                "confirmed": True,
+                "created_by": member["member_id"], "created_by_name": member["name"],
+                "created_at": created, "updated_at": created,
+                "version": 1,
+            })
+            card["status"] = "saved"
+            card["data"] = {**d, "fact_id": fid, "already_exists": False}
     elif t == "decision":
         ap = await db.approvals.find_one({"org_id": org["org_id"], "approval_id": d["approval_id"]}, {"_id": 0})
         if not has_scope(member, "approve"):
