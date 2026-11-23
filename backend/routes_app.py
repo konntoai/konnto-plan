@@ -244,7 +244,8 @@ def _attachment_context(atts: list) -> str:
         elif a.get("type") == "document":
             parts.append(f"[Document '{a.get('filename')}' uploaded] {a.get('summary') or ''}")
         elif a.get("type") == "audio" and a.get("transcript"):
-            parts.append("[This message was a voice note, transcribed]")
+            # Include the actual transcription so K-BRAIN can understand the voice note.
+            parts.append(f"[Voice note transcript] {a['transcript']}")
     return "\n".join(parts)
 
 
