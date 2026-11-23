@@ -45,6 +45,7 @@ async def run_tick(run_id: str):
     try:
         stats["reminders"] = await send_reminders()
         stats["chased"] = await chase_late()
+        stats["pcm_followups"] = await followup_pcm()
         stats["briefs"] = await send_briefs()
         await db.cron_runs.update_one({"run_id": run_id}, {"$set": {"status": "done", "stats": stats, "finished_at": iso()}})
     except Exception as e:
@@ -87,6 +88,74 @@ async def send_reminders() -> int:
         await engine.apply_behaviour_rules(org, "reminder", it, target)
         n += 1
     return n
+
+
+async def followup_pcm() -> int:
+    """Two-stage, rate-limited PCM follow-up: assignee reminder, then issuer escalation."""
+    t = now()
+    stamp = iso(t)
+    due = iso(t - timedelta(minutes=30))
+    rows = await db.pcm_instructions.find({
+        "status": {"$in": ["issued", "acknowledged", "in_progress", "blocked"]},
+        "due_at": {"$ne": None, "$lte": due},
+        "deleted": {"$ne": True},
+        "followup_level": {"$lt": 2},
+    }, {"_id": 0}).to_list(300)
+    sent = 0
+    for row in rows:
+        level = int(row.get("followup_level") or 0)
+        if level == 1 and row.get("last_followup_at"):
+            last = parse_iso(row["last_followup_at"])
+            if last and last > t - timedelta(hours=24):
+                continue
+        # Atomic short lease prevents concurrent cron invocations from sending duplicates.
+        lease_before = iso(t - timedelta(minutes=10))
+        claim = await db.pcm_instructions.find_one_and_update({
+            "instruction_id": row["instruction_id"],
+            "org_id": row["org_id"],
+            "followup_level": level,
+            "status": {"$in": ["issued", "acknowledged", "in_progress", "blocked"]},
+            "$or": [{"followup_claimed_at": None}, {"followup_claimed_at": {"$lte": lease_before}}, {"followup_claimed_at": {"$exists": False}}],
+        }, {"$set": {"followup_claimed_at": stamp}})
+        if not claim:
+            continue
+        try:
+            org = await _org(row["org_id"], {})
+            if not org:
+                await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+                continue
+            if level == 0:
+                target_id = row.get("assignee_id")
+                kind = "pcm_followup"
+                message = f"PCM follow-up: “{row['title']}” is past its deadline. Please update the status or report the blocker in KONNTO PCM."
+                event = "assignee_followup"
+            else:
+                target_id = row.get("issued_by")
+                kind = "pcm_escalation"
+                message = f"PCM escalation: “{row['title']}” remains unresolved after the follow-up window. Current status: {row.get('status')}. Please review ownership or remove the blocker."
+                event = "issuer_escalation"
+            target = await db.members.find_one({"member_id": target_id, "org_id": row["org_id"], "status": "active"}, {"_id": 0}) if target_id else None
+            if not target and level == 1:
+                target = await db.members.find_one({"org_id": row["org_id"], "member_type": "owner", "status": "active"}, {"_id": 0})
+            if not target:
+                await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+                continue
+            result = await notify(target, org=org, kind=kind, text=message, link_path="/app/pcm")
+            delivered = bool(result.get("in_app") or result.get("whatsapp") == "sent" or result.get("email") == "sent")
+            if not delivered:
+                await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+                continue
+            await db.pcm_instructions.update_one(
+                {"instruction_id": row["instruction_id"], "org_id": row["org_id"], "followup_level": level},
+                {"$set": {"followup_level": level + 1, "last_followup_at": stamp},
+                 "$unset": {"followup_claimed_at": ""},
+                 "$push": {"history": {"at": stamp, "actor_id": "konnto_pcm", "actor_name": "KONNTO PCM", "event": event}}},
+            )
+            sent += 1
+        except Exception:
+            logger.exception("PCM follow-up failed for %s", row.get("instruction_id"))
+            await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+    return sent
 
 
 async def chase_late() -> int:
