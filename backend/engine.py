@@ -13,6 +13,7 @@ from channels import notify, add_notice, wa_send, wa_join_link, wa_configured
 import brain
 from kbrain_memory import build_user_confirmed_fact
 from kbrain_context import build_analysis_context
+from kbrain_retrieval import rank_sources
 
 logger = logging.getLogger("konnto.engine")
 
@@ -640,6 +641,10 @@ async def retrieve(org: dict, member: dict, query: str, text: str, include_open:
     if include_open and has_scope(member, "approve"):
         for a in await db.approvals.find({"org_id": org["org_id"], "status": "pending"}, {"_id": 0}).to_list(5):
             add("approval", a["approval_id"], f"Approval: {a['title']}", f"asked by {a['requested_by_name']}, {a['kind']}" + (f", {money(a.get('amount'), a.get('currency'))}" if a.get('amount') is not None else ""), "/app/approvals")
+    # Rank authorised evidence deterministically; preserve retrieval order on ties.
+    sources = rank_sources(query or text, sources)
+    for index, source in enumerate(sources, 1):
+        source["n"] = index
     return sources
 
 
