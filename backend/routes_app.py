@@ -17,7 +17,7 @@ from channels import notify, add_notice, wa_send, wa_configured, send_email, ema
 from storage import put_object, get_object, extract_text, ext_of, DOC_TYPES, IMAGE_TYPES, AUDIO_TYPES, MAX_BYTES, APP_NAME
 import brain
 from kbrain_memory import build_user_confirmed_fact, build_fact_correction_metadata
-from kbrain_action_policy import button_claim_query
+from kbrain_action_policy import button_claim_query, button_claim_update, button_completion_update
 import engine
 import seed
 
@@ -380,8 +380,7 @@ async def chat_action(body: ActionIn, ctx: dict = Depends(get_ctx)):
         # allowed two concurrent taps to pass the check and execute the same action.
         claim = await db.brain_messages.update_one(
             button_claim_query(body.msg_id, m["member_id"], body.action_id),
-            {"$set": {"buttons_used": body.action_id, "buttons_used_label": body.label,
-                      "buttons_used_at": iso(), "button_action_status": "processing"}},
+            button_claim_update(body.action_id, body.label, iso()),
         )
         if not getattr(claim, "modified_count", 0):
             src = await db.brain_messages.find_one(
@@ -397,8 +396,7 @@ async def chat_action(body: ActionIn, ctx: dict = Depends(get_ctx)):
         if claimed:
             await db.brain_messages.update_one(
                 {"msg_id": body.msg_id, "member_id": m["member_id"], "buttons_used": body.action_id},
-                {"$set": {"button_action_status": "completed", "button_action_result": text,
-                          "button_action_completed_at": iso()}},
+                button_completion_update(text, iso()),
             )
     except Exception:
         # Keep the claim. Releasing it here would permit a retry to repeat a
