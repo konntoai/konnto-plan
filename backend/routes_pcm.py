@@ -13,18 +13,17 @@ from pydantic import BaseModel, Field
 from core import db, iso, now, new_id, parse_iso, get_ctx, has_scope, is_owner, audit
 from channels import notify
 import engine
+from pcm_policy import can_issue as policy_can_issue, can_view as policy_can_view
 
 router = APIRouter(prefix="/api/pcm")
 
 
 def _can_issue(member: dict) -> bool:
-    return is_owner(member) or has_scope(member, "team_work")
+    return policy_can_issue(member)
 
 
 def _can_view(member: dict, instruction: dict) -> bool:
-    if is_owner(member) or has_scope(member, "team_work"):
-        return True
-    return member["member_id"] in (instruction.get("assignee_id"), instruction.get("issued_by"))
+    return policy_can_view(member, instruction)
 
 
 def _present(record: dict, member: dict) -> dict:
@@ -99,9 +98,10 @@ async def create_instruction(body: InstructionIn, ctx: dict = Depends(get_ctx)):
     if not is_owner(member) and not has_scope(member, "manage_team"):
         if target.get("manager_id") != member["member_id"] and target.get("member_id") != member["member_id"]:
             raise HTTPException(403, "Managers may issue instructions only within their reporting line.")
-    due = iso(parse_iso(body.due_at)) if body.due_at else None
-    if body.due_at and not due:
+    parsed_due = parse_iso(body.due_at) if body.due_at else None
+    if body.due_at and not parsed_due:
         raise HTTPException(400, "Invalid due date.")
+    due = iso(parsed_due) if parsed_due else None
     # Use the existing work engine; PCM is an orchestration layer, not a duplicate task engine.
     item = await engine.create_item(org, member, {
         "kind": "task", "title": body.title, "details": body.details,
