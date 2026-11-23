@@ -766,6 +766,20 @@ async def live_state(org: dict, member: dict) -> str:
             out += [line(i) for i in b[:10 if key != 'open' else 8]]
     if not items:
         out.append("Open work: none.")
+    # PCM instruction register — scoped to the current member's authorised responsibilities.
+    pcm_query = {"org_id": org["org_id"], "deleted": {"$ne": True}}
+    if not is_owner(member) and not has_scope(member, "team_work"):
+        pcm_query["$or"] = [{"assignee_id": member["member_id"]}, {"issued_by": member["member_id"]}]
+    pcm_rows = await db.pcm_instructions.find(pcm_query, {"_id": 0}).sort("updated_at", -1).to_list(20)
+    if pcm_rows:
+        out.append("KONNTO PCM instruction register (live status; not proof of completed work):")
+        for row in pcm_rows[:12]:
+            line = f"- {row.get('title')} | {row.get('status')} | responsible: {row.get('assignee_name')} | issued by: {row.get('issued_by_name')}"
+            if row.get("due_at"):
+                line += f" | due {fmt_local(row['due_at'], org)}"
+            if row.get("blocker"):
+                line += f" | blocker: {row['blocker'][:160]}"
+            out.append(line)
     # standing instructions / temporary handovers
     rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
     if rules:
