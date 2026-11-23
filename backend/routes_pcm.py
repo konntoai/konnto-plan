@@ -153,20 +153,27 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
     elif body.status in ("acknowledged", "in_progress"):
         upd["blocker"] = None
     if body.new_due_at:
-        due = iso(parse_iso(body.new_due_at))
-        if not due:
+        parsed_due = parse_iso(body.new_due_at)
+        if not parsed_due:
             raise HTTPException(400, "Invalid revised due date.")
+        due = iso(parsed_due)
         upd["due_at"] = due
+
+    # Persist the PCM state, audit trail and evidence in one atomic document update.
+    # The status predicate prevents two concurrent requests from updating a closed
+    # instruction after both have read an older copy.
+    push_ops = {"history": event}
     if body.evidence:
-        event["evidence"] = body.evidence.strip()[:2000]
-        await db.pcm_instructions.update_one(
-            {"instruction_id": instruction_id, "org_id": org["org_id"]},
-            {"$push": {"evidence": {"at": iso(), "by": member["name"], "text": body.evidence.strip()[:2000]}}},
-        )
-    await db.pcm_instructions.update_one(
-        {"instruction_id": instruction_id, "org_id": org["org_id"]},
-        {"$set": upd, "$push": {"history": event}},
+        evidence_text = body.evidence.strip()[:2000]
+        event["evidence"] = evidence_text
+        push_ops["evidence"] = {"at": iso(), "by": member["name"], "text": evidence_text}
+    changed = await db.pcm_instructions.update_one(
+        {"instruction_id": instruction_id, "org_id": org["org_id"],
+         "status": {"$nin": ["completed", "cancelled"]}, "deleted": {"$ne": True}},
+        {"$set": upd, "$push": push_ops},
     )
+    if not changed.matched_count:
+        raise HTTPException(409, "This instruction was closed or changed. Refresh and try again.")
     # Keep the underlying Work item in sync with verified progress.
     if record.get("item_id"):
         item = await db.items.find_one({"item_id": record["item_id"], "org_id": org["org_id"]}, {"_id": 0})
