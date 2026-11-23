@@ -8,7 +8,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Request, HTTPException
 
 from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner, new_id
-from channels import notify
+from channels import notify, dispatch_notification_jobs
 import engine
 from pcm_sync import reconcile_pcm_work_sync
 
@@ -48,6 +48,16 @@ async def run_tick(run_id: str):
         stats["chased"] = await chase_late()
         stats["pcm_followups"] = await followup_pcm()
         stats["pcm_work_sync"] = await reconcile_pcm_work_sync(database=db)
+        stats["notifications"] = await dispatch_notification_jobs(limit=100)
+        # Stale action claims are quarantined, not replayed: a previous process
+        # may have completed an external side effect before crashing.
+        stale_actions = iso(now() - timedelta(minutes=10))
+        result = await db.action_operations.update_many(
+            {"status": "processing", "created_at": {"$lte": stale_actions}},
+            {"$set": {"status": "needs_review", "updated_at": iso(),
+                      "review_reason": "processing_lease_expired"}},
+        )
+        stats["action_operations_needing_review"] = getattr(result, "modified_count", 0)
         stats["briefs"] = await send_briefs()
         await db.cron_runs.update_one({"run_id": run_id}, {"$set": {"status": "done", "stats": stats, "finished_at": iso()}})
     except Exception as e:
@@ -78,7 +88,7 @@ async def send_reminders() -> int:
         who = f" — {it['counterparty']}" if it.get("counterparty") else ""
         text = f"Reminder: {it['title']}{who}{extra}."
         delivery = await notify(target, org=org, kind="reminder", text=text, buttons=engine.TASK_BUTTONS(it["item_id"]), template="konnto_reminder",
-                                params=[org["name"], f"{it['title']}{extra}"], email_subject=f"Reminder: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}")
+                                params=[org["name"], f"{it['title']}{extra}"], email_subject=f"Reminder: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}", idempotency_key=f"reminder:{it['item_id']}:{it.get('remind_at') or 'due'}")
         # Mark as reminded only after at least one supported channel confirms delivery.
         delivered = bool(delivery.get("in_app") or delivery.get("whatsapp") == "sent" or delivery.get("email") == "sent")
         if not delivered:
@@ -142,7 +152,8 @@ async def followup_pcm() -> int:
             if not target:
                 await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
                 continue
-            result = await notify(target, org=org, kind=kind, text=message, link_path="/app/pcm")
+            result = await notify(target, org=org, kind=kind, text=message, link_path="/app/pcm",
+                                  idempotency_key=f"pcm-followup:{row['instruction_id']}:{level}")
             delivered = bool(result.get("in_app") or result.get("whatsapp") == "sent" or result.get("email") == "sent")
             if not delivered:
                 await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
@@ -185,7 +196,8 @@ async def chase_late() -> int:
             else:
                 text = f"Late: {it['title']} was due {due_txt}. What's happening?"
             await notify(target, org=org, kind="chase", text=text, buttons=engine.TASK_BUTTONS(it["item_id"]), template="konnto_reminder",
-                         params=[org["name"], f"Late: {it['title']} (due {due_txt})"], email_subject=f"Late: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}")
+                         params=[org["name"], f"Late: {it['title']} (due {due_txt})"], email_subject=f"Late: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}",
+                         idempotency_key=f"chase:{it['item_id']}:{level}")
             hist = "Asked for an update (late)"
         else:
             # chase up the line: manager, then owner(s)
@@ -203,7 +215,8 @@ async def chase_late() -> int:
             for u in ups:
                 await notify(u, org=org, kind="escalation", text=f"Still late: {it['title']} ({assignee['name']}, due {due_txt}). Reason: {reason}.",
                              template="konnto_brief", params=[org["name"], f"Still late: {it['title']} ({assignee['name']})"],
-                             email_subject=f"Still late: {it['title'][:50]}", link_path=f"/app/work?item={it['item_id']}")
+                             email_subject=f"Still late: {it['title'][:50]}", link_path=f"/app/work?item={it['item_id']}",
+                             idempotency_key=f"escalation:{it['item_id']}:{level}:{u['member_id']}")
             hist = "Chased up the line: " + ", ".join(u["name"] for u in ups)
         await db.items.update_one({"item_id": it["item_id"]}, {"$set": {"chase_level": level + 1, "last_chased_at": iso(t)},
                                                                "$push": {"history": engine._hist("KONNTO", hist)}})

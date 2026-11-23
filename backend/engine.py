@@ -2,6 +2,8 @@
 import re
 import math
 import logging
+import hashlib
+import json
 from datetime import timedelta
 from html import escape
 from typing import Optional, AsyncGenerator
@@ -15,6 +17,7 @@ from kbrain_memory import build_user_confirmed_fact
 from kbrain_context import build_analysis_context
 from kbrain_retrieval import rank_sources
 from kbrain_diagnostics import build_operational_diagnostics
+from kbrain_action_lifecycle import card_operation_id, card_operation_record, card_operation_outcome
 
 logger = logging.getLogger("konnto.engine")
 
@@ -1257,6 +1260,57 @@ async def save_proposal(org: dict, member: dict, data: dict, source: dict) -> di
 
 
 async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Optional[dict] = None) -> dict:
+    # Claim this exact state transition before any side effect. Mongo's _id
+    # uniqueness is the concurrency gate; an interrupted operation is never
+    # blindly replayed because external sends and multi-document writes may have
+    # succeeded before the process stopped.
+    source = await db.brain_messages.find_one(
+        {"org_id": org["org_id"], "member_id": member["member_id"], "cards.card_id": card_id},
+        {"_id": 0, "cards": 1},
+    )
+    if not source:
+        return {"error": "not_found"}
+    source_card = next((c for c in source.get("cards", []) if c.get("card_id") == card_id), None)
+    if not source_card:
+        return {"error": "not_found"}
+    edits_json = json.dumps(edits or {}, sort_keys=True, default=str, separators=(",", ":"))
+    edits_key = hashlib.sha256(edits_json.encode("utf-8")).hexdigest()[:16]
+    operation_id = card_operation_id(org["org_id"], member["member_id"], card_id, op, source_card.get("status", ""), edits_key)
+    existing = await db.action_operations.find_one({"_id": operation_id}, {"_id": 0})
+    if existing:
+        if existing.get("status") == "processing":
+            started = parse_iso(existing.get("created_at"))
+            if started and started < now() - timedelta(minutes=10):
+                await db.action_operations.update_one(
+                    {"_id": operation_id, "status": "processing"},
+                    {"$set": {"status": "needs_review", "updated_at": iso(), "review_reason": "processing_lease_expired"}},
+                )
+                existing["status"] = "needs_review"
+        return card_operation_outcome(existing.get("status"), existing.get("result"))
+    record = card_operation_record(operation_id, org["org_id"], member["member_id"], card_id, op, iso())
+    try:
+        await db.action_operations.insert_one(record)
+    except Exception as exc:
+        if "duplicate" not in str(exc).lower():
+            raise
+        existing = await db.action_operations.find_one({"_id": operation_id}, {"_id": 0})
+        return card_operation_outcome((existing or {}).get("status"), (existing or {}).get("result"))
+    try:
+        result = await _card_action_execute(org, member, card_id, op, edits)
+    except Exception as exc:
+        await db.action_operations.update_one(
+            {"_id": operation_id, "status": "processing"},
+            {"$set": {"status": "needs_review", "updated_at": iso(), "error_type": type(exc).__name__}},
+        )
+        raise
+    await db.action_operations.update_one(
+        {"_id": operation_id, "status": "processing"},
+        {"$set": {"status": "completed", "result": result, "updated_at": iso(), "completed_at": iso()}},
+    )
+    return result
+
+
+async def _card_action_execute(org: dict, member: dict, card_id: str, op: str, edits: Optional[dict] = None) -> dict:
     msg = await db.brain_messages.find_one({"org_id": org["org_id"], "member_id": member["member_id"], "cards.card_id": card_id}, {"_id": 0})
     if not msg:
         return {"error": "not_found"}

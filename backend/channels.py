@@ -264,36 +264,155 @@ async def wa_send(*, to_phone: str, text: str, buttons: Optional[list] = None, t
 # ============================================================== NOTIFY (in-app + WhatsApp + email backup)
 
 async def add_notice(org_id: str, member: dict, text: str, *, kind: str = "notice", buttons: Optional[list] = None,
-                     link_path: Optional[str] = None, cards: Optional[list] = None) -> Optional[dict]:
-    """Post a KONNTO message into a member's in-app chat (the same conversation as WhatsApp)."""
-    msg = {"msg_id": new_id("bm"), "org_id": org_id, "member_id": member["member_id"], "role": "assistant",
+                     link_path: Optional[str] = None, cards: Optional[list] = None, msg_id: Optional[str] = None) -> Optional[dict]:
+    """Post an idempotently keyed KONNTO message into a member's in-app chat."""
+    key = msg_id or new_id("bm")
+    existing = await db.brain_messages.find_one({"msg_id": key}, {"_id": 0})
+    if existing:
+        return existing
+    msg = {"msg_id": key, "org_id": org_id, "member_id": member["member_id"], "role": "assistant",
            "kind": kind, "text": text, "buttons": buttons or [], "link_path": link_path, "cards": cards or [],
            "channel": "app", "created_at": iso(), "citations": []}
     await db.brain_messages.insert_one(dict(msg))
     return msg
 
 
+async def enqueue_notification_job(*, channel: str, org_id: str, member_id: str, payload: dict,
+                                    idempotency_key: Optional[str] = None) -> str:
+    """Persist a delivery intent before attempting any external side effect."""
+    key = idempotency_key or new_id("notify")
+    job_id = f"{key}:{channel}"
+    record = {"_id": job_id, "org_id": org_id, "member_id": member_id, "channel": channel,
+              "payload": payload, "status": "queued", "attempts": 0, "created_at": iso(), "updated_at": iso()}
+    try:
+        await db.notification_jobs.insert_one(record)
+    except Exception as exc:
+        if "duplicate" not in str(exc).lower():
+            raise
+    return job_id
+
+
+async def dispatch_notification_job(job_id: str) -> dict:
+    """Claim and deliver one job. Ambiguous external outcomes become uncertain, never auto-replayed."""
+    stamp = iso()
+    job = await db.notification_jobs.find_one_and_update(
+        {"_id": job_id, "status": {"$in": ["queued", "retry"]},
+         "$or": [{"next_attempt_at": None}, {"next_attempt_at": {"$lte": stamp}}, {"next_attempt_at": {"$exists": False}}]},
+        {"$set": {"status": "sending", "claimed_at": stamp, "updated_at": stamp},
+         "$inc": {"attempts": 1}},
+    )
+    if not job:
+        return await db.notification_jobs.find_one({"_id": job_id}, {"_id": 0}) or {"status": "missing"}
+    payload = job.get("payload") or {}
+    outcome, error, provider_ref = "sent", None, None
+    try:
+        if job["channel"] == "in_app":
+            await add_notice(job["org_id"], payload["member"], payload["text"], kind=payload["kind"],
+                             buttons=payload.get("buttons"), link_path=payload.get("link_path"),
+                             msg_id=f"notice_{job_id.replace(':', '_')}")
+        elif job["channel"] == "whatsapp":
+            rec = await wa_send(to_phone=payload["phone"], text=payload["text"], buttons=payload.get("buttons"),
+                                template=payload.get("template"), params=payload.get("params"),
+                                org_id=job["org_id"], member_id=job["member_id"], kind=payload["kind"])
+            outcome = rec["status"]
+            error = rec.get("error")
+            provider_ref = rec.get("wamid")
+            if outcome == "failed" and error == "error":
+                outcome = "uncertain"
+        elif job["channel"] == "email":
+            ok, ref = await send_email(to=payload["email"], subject=payload["subject"], html=payload["html"])
+            outcome, error = ("sent", None) if ok else ("failed", ref)
+            if not ok and ref == "error":
+                outcome = "uncertain"
+            provider_ref = ref if ok else None
+        else:
+            outcome, error = "failed", "unsupported_channel"
+    except Exception as exc:
+        # The call may have reached a provider before the exception surfaced.
+        outcome, error = ("failed" if job["channel"] == "in_app" else "uncertain"), type(exc).__name__
+    http_code = int(str(error).split("_", 1)[1]) if str(error).startswith("http_") and str(error).split("_", 1)[1].isdigit() else None
+    retryable = outcome == "failed" and int(job.get("attempts") or 0) < 5 and (
+        job["channel"] == "in_app" or http_code == 429 or (http_code is not None and http_code >= 500)
+    )
+    next_status = "retry" if retryable else outcome
+    delay_seconds = min(3600, 60 * (2 ** max(0, int(job.get("attempts") or 1) - 1)))
+    fields = {"status": next_status, "outcome": outcome, "error": error,
+              "provider_ref": provider_ref, "finished_at": iso(), "updated_at": iso()}
+    if retryable:
+        fields["next_attempt_at"] = iso(now() + timedelta(seconds=delay_seconds))
+    await db.notification_jobs.update_one(
+        {"_id": job_id, "status": "sending"},
+        {"$set": fields},
+    )
+    return {"status": outcome, "error": error, "provider_ref": provider_ref, "job_id": job_id}
+
+
+async def dispatch_notification_jobs(limit: int = 100) -> dict:
+    """Retry safe queued work; stale in-flight provider calls are quarantined as uncertain."""
+    stale = iso(now() - timedelta(minutes=5))
+    await db.notification_jobs.update_many(
+        {"status": "sending", "claimed_at": {"$lte": stale}},
+        {"$set": {"status": "uncertain", "outcome": "uncertain", "error": "delivery_outcome_unknown",
+                  "updated_at": iso()}},
+    )
+    rows = await db.notification_jobs.find({"status": {"$in": ["queued", "retry"]},
+                                            "$or": [{"next_attempt_at": None}, {"next_attempt_at": {"$lte": iso()}},
+                                                    {"next_attempt_at": {"$exists": False}}]},
+                                           {"_id": 1}).sort("created_at", 1).to_list(limit)
+    stats = {"sent": 0, "failed": 0, "uncertain": 0, "skipped": 0}
+    for row in rows:
+        result = await dispatch_notification_job(row["_id"])
+        status = result.get("status", "failed")
+        if status in stats:
+            stats[status] += 1
+        elif status in ("not_connected", "skipped_no_number", "skipped_opted_out", "window_closed_no_template"):
+            stats["skipped"] += 1
+        else:
+            stats["failed"] += 1
+    return stats
+
+
 async def notify(member: dict, *, org: dict, kind: str, text: str, buttons: Optional[list] = None,
                  template: Optional[str] = None, params: Optional[list] = None, email_subject: Optional[str] = None,
-                 link_path: Optional[str] = None, in_app: bool = True, email_fallback: bool = True) -> dict:
-    result = {"in_app": False, "whatsapp": None, "email": None}
+                 link_path: Optional[str] = None, in_app: bool = True, email_fallback: bool = True,
+                 idempotency_key: Optional[str] = None) -> dict:
+    """Queue each delivery before dispatch. The returned channel statuses reflect confirmed outcomes."""
+    result = {"in_app": False, "whatsapp": None, "email": None, "jobs": []}
+    base_key = idempotency_key or new_id("notify")
     if in_app and member.get("user_id"):
-        await add_notice(org["org_id"], member, text, kind=kind, buttons=buttons, link_path=link_path)
-        result["in_app"] = True
+        job_id = await enqueue_notification_job(
+            channel="in_app", org_id=org["org_id"], member_id=member["member_id"],
+            payload={"member": {k: member.get(k) for k in ("member_id", "user_id")},
+                     "kind": kind, "text": text, "buttons": buttons or [], "link_path": link_path},
+            idempotency_key=base_key,
+        )
+        result["jobs"].append(job_id)
+        delivery = await dispatch_notification_job(job_id)
+        result["in_app"] = delivery.get("status") == "sent"
     wa_status = None
     if member.get("phone") and member.get("wa_opt_in"):
-        rec = await wa_send(to_phone=member["phone"], text=text, buttons=buttons, template=template, params=params,
-                            org_id=org["org_id"], member_id=member["member_id"], kind=kind)
-        wa_status = rec["status"]
+        job_id = await enqueue_notification_job(
+            channel="whatsapp", org_id=org["org_id"], member_id=member["member_id"],
+            payload={"phone": member["phone"], "text": text, "buttons": buttons or [],
+                     "template": template, "params": params or [], "kind": kind},
+            idempotency_key=base_key,
+        )
+        result["jobs"].append(job_id)
+        delivery = await dispatch_notification_job(job_id)
+        wa_status = delivery.get("status")
     result["whatsapp"] = wa_status
-    if org.get("is_demo"):  # the demo business never sends real email
+    if org.get("is_demo"):
         email_fallback = False
-    if wa_status != "sent" and email_fallback and member.get("email"):
+    if wa_status not in ("sent", "uncertain") and email_fallback and member.get("email"):
         url = app_link(link_path or "/app/chat")
-        html = email_html(email_subject or "An update from KONNTO", [text], "Open KONNTO", url if url.startswith("https://") else None)
-        ok, ref = await send_email(to=member["email"], subject=email_subject or f"KONNTO: {text[:60]}", html=html)
-        await db.outbox.insert_one({"out_id": new_id("out"), "org_id": org["org_id"], "member_id": member["member_id"],
-                                    "channel": "email", "kind": kind, "to": member["email"], "text": text[:500],
-                                    "status": "sent" if ok else "failed", "error": None if ok else ref, "created_at": iso()})
-        result["email"] = "sent" if ok else "failed"
+        html = email_html(email_subject or "An update from KONNTO", [text], "Open KONNTO",
+                          url if url.startswith("https://") else None)
+        job_id = await enqueue_notification_job(
+            channel="email", org_id=org["org_id"], member_id=member["member_id"],
+            payload={"email": member["email"], "subject": email_subject or f"KONNTO: {text[:60]}", "html": html},
+            idempotency_key=base_key,
+        )
+        result["jobs"].append(job_id)
+        delivery = await dispatch_notification_job(job_id)
+        result["email"] = delivery.get("status")
     return result
