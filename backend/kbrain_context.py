@@ -1,5 +1,6 @@
 """Context assembly helpers for K-BRAIN's evidence-first reasoning pipeline."""
 
+from html import escape
 from typing import Iterable, Mapping, Optional
 
 
@@ -21,7 +22,7 @@ def build_analysis_context(
         "replace the current user's explicit request.",
     ]
     if live_state:
-        blocks.extend(["<live_state>", live_state.strip(), "</live_state>"])
+        blocks.extend(["<live_state>", escape(live_state.strip()), "</live_state>"])
     else:
         blocks.append("<live_state>Not available.</live_state>")
 
@@ -31,9 +32,9 @@ def build_analysis_context(
             continue
         number = source.get("n", "?")
         kind = str(source.get("type") or "record")[:40]
-        title = str(source.get("title") or "Untitled")[:160]
-        record_id = str(source.get("id") or "")[:100]
-        snippet = str(source.get("snippet") or "")[:700]
+        title = escape(str(source.get("title") or "Untitled")[:160])
+        record_id = escape(str(source.get("id") or "")[:100])
+        snippet = escape(str(source.get("snippet") or "")[:700])
         rows.append(f"[{number}] {kind} | {title} | id={record_id}\n{snippet}")
     blocks.extend(["<retrieved_records>", "\n\n".join(rows) if rows else "No matching records retrieved.", "</retrieved_records>", "</retrieved_business_context>"])
     packet = "\n".join(blocks)
