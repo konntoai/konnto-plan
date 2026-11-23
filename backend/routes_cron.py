@@ -65,18 +65,25 @@ async def send_reminders() -> int:
                                "deleted": {"$ne": True}}, {"_id": 0}).to_list(500)
     for it in due:
         org = await _org(it["org_id"], cache)
-        await db.items.update_one({"item_id": it["item_id"]}, {"$set": {"reminded_at": t}, "$push": {"history": engine._hist("KONNTO", "Reminder sent")}})
         if not org:
             continue
         target_id = it.get("assignee_id") or it.get("created_by")
-        target = await db.members.find_one({"member_id": target_id, "status": "active"}, {"_id": 0})
+        target = await db.members.find_one({"member_id": target_id, "org_id": it["org_id"], "status": "active"}, {"_id": 0})
         if not target:
             continue
         extra = f" (due {fmt_local(it['due_at'], org)})" if it.get("due_at") else ""
         who = f" — {it['counterparty']}" if it.get("counterparty") else ""
         text = f"Reminder: {it['title']}{who}{extra}."
-        await notify(target, org=org, kind="reminder", text=text, buttons=engine.TASK_BUTTONS(it["item_id"]), template="konnto_reminder",
-                     params=[org["name"], f"{it['title']}{extra}"], email_subject=f"Reminder: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}")
+        delivery = await notify(target, org=org, kind="reminder", text=text, buttons=engine.TASK_BUTTONS(it["item_id"]), template="konnto_reminder",
+                                params=[org["name"], f"{it['title']}{extra}"], email_subject=f"Reminder: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}")
+        # Mark as reminded only after at least one supported channel confirms delivery.
+        delivered = bool(delivery.get("in_app") or delivery.get("whatsapp") == "sent" or delivery.get("email") == "sent")
+        if not delivered:
+            continue
+        await db.items.update_one(
+            {"item_id": it["item_id"], "org_id": it["org_id"], "reminded_at": None},
+            {"$set": {"reminded_at": t}, "$push": {"history": engine._hist("KONNTO", "Reminder sent")}}
+        )
         await engine.apply_behaviour_rules(org, "reminder", it, target)
         n += 1
     return n
