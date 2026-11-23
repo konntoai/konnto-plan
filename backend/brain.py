@@ -143,7 +143,7 @@ def _people_block(people: list) -> str:
     return "\n".join(f"- {p['name']} | {p.get('member_type')} | job: {p.get('job') or '-'} | id {p['member_id']}" for p in people) or "- (only the speaker so far)"
 
 
-def analysis_system(org: dict, member: dict, people: list, open_items: list, approvals: list, rules: list, cfg: dict, role: str = "") -> str:
+def analysis_system(org: dict, member: dict, people: list, open_items: list, approvals: list, rules: list, cfg: dict, role: str = "", business_context: str = "") -> str:
     tz = org_tz(org)
     local = now().astimezone(tz)
     items_txt = "\n".join(f"- {i['item_id']}: {i['title']} ({i.get('kind')}, {i.get('status')}, for {i.get('assignee_name') or '-'}, due {fmt_local(i.get('due_at'), org) or '-'})" for i in open_items[:40]) or "- none"
