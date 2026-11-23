@@ -11,6 +11,7 @@ from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso,
                   SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits, org_tz, fact_scope_query, fact_category, can_read_rules)
 from channels import notify, add_notice, wa_send, wa_join_link, wa_configured
 import brain
+from kbrain_memory import build_user_confirmed_fact
 from kbrain_context import build_analysis_context
 
 logger = logging.getLogger("konnto.engine")
@@ -1069,20 +1070,16 @@ async def apply_draft(org: dict, member: dict, card: dict) -> Optional[str]:
         else:
             fid = new_id("fct")
             created = iso()
-            await db.knowledge.insert_one({
-                "fact_id": fid, "org_id": org["org_id"], "text": fact_text,
-                "category": d.get("category") or fact_category(fact_text),
-                "source": "chat (user confirmed)",
-                "source_type": "conversation",
-                "evidence_type": "user_confirmed_fact",
-                "verification_status": "user_confirmed_not_independently_verified",
-                "confidence": "user_attested",
-                "visibility": "org",
-                "confirmed": True,
-                "created_by": member["member_id"], "created_by_name": member["name"],
-                "created_at": created, "updated_at": created,
-                "version": 1,
-            })
+            fact = build_user_confirmed_fact(
+                fact_id=fid,
+                org_id=org["org_id"],
+                text=fact_text,
+                category=d.get("category") or fact_category(fact_text),
+                member=member,
+                source="chat (user confirmed)",
+                created_at=created,
+            )
+            await db.knowledge.insert_one(dict(fact))
             card["status"] = "saved"
             card["data"] = {**d, "fact_id": fid, "already_exists": False}
     elif t == "decision":
