@@ -15,6 +15,7 @@ import AppShell from "@/components/AppShell";
 import ChatPage from "@/pages/app/Chat";
 import DashboardPage from "@/pages/app/Dashboard";
 import WorkPage from "@/pages/app/Work";
+import PCMPage from "@/pages/app/PCM";
 import TeamPage from "@/pages/app/Team";
 import ThreadPage from "@/pages/app/Thread";
 import ApprovalsPage from "@/pages/app/Approvals";
@@ -57,6 +58,7 @@ function App() {
               <Route path="chat" element={<ChatPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="work" element={<WorkPage />} />
+              <Route path="pcm" element={<PCMPage />} />
               <Route path="team" element={<TeamPage />} />
               <Route path="team/thread/:threadId" element={<ThreadPage />} />
               <Route path="approvals" element={<ApprovalsPage />} />
