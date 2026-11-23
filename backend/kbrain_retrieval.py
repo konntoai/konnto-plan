@@ -5,7 +5,7 @@ _STOP = set("""the a an and or to of for in on at by with is are was were be bee
 
 
 def _terms(text):
-    return {w for w in re.findall(r"[\\w₹$€£]{3,}", (text or "").lower()) if w not in _STOP}
+    return {w for w in re.findall(r"[\w₹$€£]{3,}", (text or "").lower()) if w not in _STOP}
 
 
 def rank_sources(query, sources):
