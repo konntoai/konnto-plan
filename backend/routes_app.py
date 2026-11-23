@@ -17,6 +17,7 @@ from channels import notify, add_notice, wa_send, wa_configured, send_email, ema
 from storage import put_object, get_object, extract_text, ext_of, DOC_TYPES, IMAGE_TYPES, AUDIO_TYPES, MAX_BYTES, APP_NAME
 import brain
 from kbrain_memory import build_user_confirmed_fact, build_fact_correction_metadata
+from kbrain_action_policy import button_claim_query
 import engine
 import seed
 
@@ -378,9 +379,7 @@ async def chat_action(body: ActionIn, ctx: dict = Depends(get_ctx)):
         # Claim the button before executing it. The old read-then-write sequence
         # allowed two concurrent taps to pass the check and execute the same action.
         claim = await db.brain_messages.update_one(
-            {"msg_id": body.msg_id, "member_id": m["member_id"],
-             "buttons.id": body.action_id,
-             "$or": [{"buttons_used": None}, {"buttons_used": {"$exists": False}}]},
+            button_claim_query(body.msg_id, m["member_id"], body.action_id),
             {"$set": {"buttons_used": body.action_id, "buttons_used_label": body.label,
                       "buttons_used_at": iso(), "button_action_status": "processing"}},
         )
