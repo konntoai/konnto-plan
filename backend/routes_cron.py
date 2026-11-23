@@ -8,7 +8,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Request, HTTPException
 
 from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner, new_id
-from channels import notify
+from channels import notify, dispatch_notification_jobs
 import engine
 from pcm_sync import reconcile_pcm_work_sync
 
@@ -48,6 +48,16 @@ async def run_tick(run_id: str):
         stats["chased"] = await chase_late()
         stats["pcm_followups"] = await followup_pcm()
         stats["pcm_work_sync"] = await reconcile_pcm_work_sync(database=db)
+        stats["notifications"] = await dispatch_notification_jobs(limit=100)
+        # Stale action claims are quarantined, not replayed: a previous process
+        # may have completed an external side effect before crashing.
+        stale_actions = iso(now() - timedelta(minutes=10))
+        result = await db.action_operations.update_many(
+            {"status": "processing", "created_at": {"$lte": stale_actions}},
+            {"$set": {"status": "needs_review", "updated_at": iso(),
+                      "review_reason": "processing_lease_expired"}},
+        )
+        stats["action_operations_needing_review"] = getattr(result, "modified_count", 0)
         stats["briefs"] = await send_briefs()
         await db.cron_runs.update_one({"run_id": run_id}, {"$set": {"status": "done", "stats": stats, "finished_at": iso()}})
     except Exception as e:
