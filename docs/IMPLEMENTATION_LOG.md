@@ -8,17 +8,39 @@ phases on the same shared foundation. KONNTO CENTRAL remains a later expansion.
 
 ## Changes committed on `konnto-v2-foundation`
 
-- Added the v2 K-BRAIN/PCM behavioural prompt and baseline implementation documents.
-- Updated the brain prompt wiring and removed contradictory product claims.
+### K-BRAIN and product behaviour
+- Added the K-BRAIN v2 master prompt for one shared business intelligence engine,
+  permission-aware memory, eight departmental intelligence contexts, transparent
+  diagnostics, cross-department reasoning, authority boundaries and truthful
+  execution reporting.
+- Added a 20-case behaviour evaluation set covering privacy, role permissions,
+  memory, approvals, PCM, diagnostics and truthfulness.
+- Updated stale WhatsApp FAQ wording to be configuration-aware.
+- Removed an obsolete legacy prompt instruction claiming PCM did not exist.
+
+### KONNTO PCM
+- Added `backend/routes_pcm.py` with an organisation-scoped instruction register,
+  issuance, role/reporting-line checks, acknowledgement, progress, blocker reports,
+  completion evidence and cancellation.
+- PCM instructions reuse the existing Work item engine; no second task engine was
+  introduced.
+- Added a PCM workspace in the frontend and navigation route.
+- Added live PCM instruction context to K-BRAIN, filtered by the current member's
+  permissions.
+- Added a two-stage scheduled follow-up: assignee reminder after a 30-minute
+  overdue grace period, then issuer escalation after a further 24 hours. Delivery
+  must be confirmed by an available channel before the follow-up stage advances.
+- Added pure authorization policy helpers and isolated unit tests. An initial test
+  caught and corrected a partner-role privilege edge case.
+
+### Foundation and reliability fixes
 - Made demo seeding opt-in through `KONNTO_DEMO_MODE=true`; default is disabled.
-  This preserves the demo seeder but prevents fictional demo records from being
-  inserted into ordinary customer onboarding by default.
-- Changed explicit organisation selection so an inaccessible `X-Org-Id` returns
-  HTTP 403 instead of silently falling back to another organisation.
-- Passed the actual audio transcript into K-BRAIN attachment context.
-- Changed reminder processing to mark a reminder as sent only after at least one
-  supported channel confirms delivery. The target-member lookup is also scoped to
-  the reminder's organisation.
+- An inaccessible explicit `X-Org-Id` now returns HTTP 403 instead of silently
+  falling back to another organisation.
+- Passed actual voice-note transcripts into K-BRAIN context.
+- Reminder processing now marks a reminder as sent only after at least one
+  supported channel confirms delivery, and target lookup is organisation-scoped.
+- Added GitHub Actions checks for Python compilation and isolated PCM policy tests.
 
 ## Verification status
 
