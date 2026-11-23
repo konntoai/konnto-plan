@@ -239,6 +239,10 @@ async def get_ctx(user: dict = Depends(current_user), x_org_id: Optional[str] = 
     member = None
     if org_id:
         member = await db.members.find_one({"org_id": org_id, "user_id": user["user_id"], "status": "active"}, {"_id": 0})
+        # An explicitly selected organisation is a security boundary. Never silently
+        # switch the request to another membership when that organisation is not accessible.
+        if x_org_id and not member:
+            raise HTTPException(status_code=403, detail="You do not have access to this organisation.")
     if not member:
         member = await db.members.find_one({"user_id": user["user_id"], "status": "active"}, {"_id": 0}, sort=[("joined_at", -1)])
         if not member:
@@ -253,7 +257,7 @@ async def get_ctx(user: dict = Depends(current_user), x_org_id: Optional[str] = 
 def item_scope_query(member: dict) -> dict:
     """Mongo filter for the items a member may see (always org-scoped)."""
     mid = member["member_id"]
-    base = {"org_id": member["org_id"], "deleted": {"$ne": True}}
+    base = {"org_id": member["org_id"], "deleted": {"$ne": True}, "lifecycle_status": {"$ne": "superseded"}}
     private_ok = {"$or": [{"visibility": {"$ne": "private"}}, {"created_by": mid}]}
     if has_scope(member, "team_work"):
         return {**base, **private_ok}

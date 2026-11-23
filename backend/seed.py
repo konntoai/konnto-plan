@@ -1,7 +1,14 @@
 """Demo seed: populate a fresh org with sample projects, tasks, approvals, team members and a direct thread."""
+import os
 from datetime import timedelta
 from core import db, now, iso, new_id, short_code, SCOPES, norm_phone, fact_category
 import engine
+
+
+def demo_seed_enabled() -> bool:
+    """Demo fixtures are opt-in and must never leak into real customer onboarding."""
+    return os.environ.get("KONNTO_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 SAMPLE_PEOPLE = [
     {"name": "Priya Nair", "job": "Operations Lead", "member_type": "team", "phone": "+919000000001", "email": None},

@@ -7,9 +7,10 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Request, HTTPException
 
-from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner
+from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner, new_id
 from channels import notify
 import engine
+from pcm_sync import reconcile_pcm_work_sync
 
 logger = logging.getLogger("konnto.cron")
 router = APIRouter(prefix="/api")
@@ -45,6 +46,8 @@ async def run_tick(run_id: str):
     try:
         stats["reminders"] = await send_reminders()
         stats["chased"] = await chase_late()
+        stats["pcm_followups"] = await followup_pcm()
+        stats["pcm_work_sync"] = await reconcile_pcm_work_sync(database=db)
         stats["briefs"] = await send_briefs()
         await db.cron_runs.update_one({"run_id": run_id}, {"$set": {"status": "done", "stats": stats, "finished_at": iso()}})
     except Exception as e:
@@ -65,21 +68,96 @@ async def send_reminders() -> int:
                                "deleted": {"$ne": True}}, {"_id": 0}).to_list(500)
     for it in due:
         org = await _org(it["org_id"], cache)
-        await db.items.update_one({"item_id": it["item_id"]}, {"$set": {"reminded_at": t}, "$push": {"history": engine._hist("KONNTO", "Reminder sent")}})
         if not org:
             continue
         target_id = it.get("assignee_id") or it.get("created_by")
-        target = await db.members.find_one({"member_id": target_id, "status": "active"}, {"_id": 0})
+        target = await db.members.find_one({"member_id": target_id, "org_id": it["org_id"], "status": "active"}, {"_id": 0})
         if not target:
             continue
         extra = f" (due {fmt_local(it['due_at'], org)})" if it.get("due_at") else ""
         who = f" — {it['counterparty']}" if it.get("counterparty") else ""
         text = f"Reminder: {it['title']}{who}{extra}."
-        await notify(target, org=org, kind="reminder", text=text, buttons=engine.TASK_BUTTONS(it["item_id"]), template="konnto_reminder",
-                     params=[org["name"], f"{it['title']}{extra}"], email_subject=f"Reminder: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}")
+        delivery = await notify(target, org=org, kind="reminder", text=text, buttons=engine.TASK_BUTTONS(it["item_id"]), template="konnto_reminder",
+                                params=[org["name"], f"{it['title']}{extra}"], email_subject=f"Reminder: {it['title'][:60]}", link_path=f"/app/work?item={it['item_id']}")
+        # Mark as reminded only after at least one supported channel confirms delivery.
+        delivered = bool(delivery.get("in_app") or delivery.get("whatsapp") == "sent" or delivery.get("email") == "sent")
+        if not delivered:
+            continue
+        await db.items.update_one(
+            {"item_id": it["item_id"], "org_id": it["org_id"], "reminded_at": None},
+            {"$set": {"reminded_at": t}, "$push": {"history": engine._hist("KONNTO", "Reminder sent")}}
+        )
         await engine.apply_behaviour_rules(org, "reminder", it, target)
         n += 1
     return n
+
+
+async def followup_pcm() -> int:
+    """Two-stage, rate-limited PCM follow-up: assignee reminder, then issuer escalation."""
+    t = now()
+    stamp = iso(t)
+    due = iso(t - timedelta(minutes=30))
+    rows = await db.pcm_instructions.find({
+        "status": {"$in": ["issued", "acknowledged", "in_progress", "blocked"]},
+        "due_at": {"$ne": None, "$lte": due},
+        "deleted": {"$ne": True},
+        "followup_level": {"$lt": 2},
+    }, {"_id": 0}).to_list(300)
+    sent = 0
+    for row in rows:
+        level = int(row.get("followup_level") or 0)
+        if level == 1 and row.get("last_followup_at"):
+            last = parse_iso(row["last_followup_at"])
+            if last and last > t - timedelta(hours=24):
+                continue
+        # Atomic short lease prevents concurrent cron invocations from sending duplicates.
+        lease_before = iso(t - timedelta(minutes=10))
+        claim = await db.pcm_instructions.find_one_and_update({
+            "instruction_id": row["instruction_id"],
+            "org_id": row["org_id"],
+            "followup_level": level,
+            "status": {"$in": ["issued", "acknowledged", "in_progress", "blocked"]},
+            "$or": [{"followup_claimed_at": None}, {"followup_claimed_at": {"$lte": lease_before}}, {"followup_claimed_at": {"$exists": False}}],
+        }, {"$set": {"followup_claimed_at": stamp}})
+        if not claim:
+            continue
+        try:
+            org = await _org(row["org_id"], {})
+            if not org:
+                await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+                continue
+            if level == 0:
+                target_id = row.get("assignee_id")
+                kind = "pcm_followup"
+                message = f"PCM follow-up: “{row['title']}” is past its deadline. Please update the status or report the blocker in KONNTO PCM."
+                event = "assignee_followup"
+            else:
+                target_id = row.get("issued_by")
+                kind = "pcm_escalation"
+                message = f"PCM escalation: “{row['title']}” remains unresolved after the follow-up window. Current status: {row.get('status')}. Please review ownership or remove the blocker."
+                event = "issuer_escalation"
+            target = await db.members.find_one({"member_id": target_id, "org_id": row["org_id"], "status": "active"}, {"_id": 0}) if target_id else None
+            if not target and level == 1:
+                target = await db.members.find_one({"org_id": row["org_id"], "member_type": "owner", "status": "active"}, {"_id": 0})
+            if not target:
+                await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+                continue
+            result = await notify(target, org=org, kind=kind, text=message, link_path="/app/pcm")
+            delivered = bool(result.get("in_app") or result.get("whatsapp") == "sent" or result.get("email") == "sent")
+            if not delivered:
+                await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+                continue
+            await db.pcm_instructions.update_one(
+                {"instruction_id": row["instruction_id"], "org_id": row["org_id"], "followup_level": level},
+                {"$set": {"followup_level": level + 1, "last_followup_at": stamp},
+                 "$unset": {"followup_claimed_at": ""},
+                 "$push": {"history": {"at": stamp, "actor_id": "konnto_pcm", "actor_name": "KONNTO PCM", "event": event}}},
+            )
+            sent += 1
+        except Exception:
+            logger.exception("PCM follow-up failed for %s", row.get("instruction_id"))
+            await db.pcm_instructions.update_one({"instruction_id": row["instruction_id"]}, {"$unset": {"followup_claimed_at": ""}})
+    return sent
 
 
 async def chase_late() -> int:
@@ -160,6 +238,45 @@ async def build_brief(org: dict, member: dict) -> str:
     return "\n".join(lines)
 
 
+async def _claim_brief(key: str, org_id: str, stamp: str):
+    """Claim a daily brief delivery; legacy key-only records remain retryable."""
+    token = new_id("briefclaim")
+    lease_until = iso(now() + timedelta(minutes=20))
+    eligible = {
+        "key": key,
+        "status": {"$ne": "sent"},
+        "$or": [
+            {"lease_until": None},
+            {"lease_until": {"$exists": False}},
+            {"lease_until": {"$lte": stamp}},
+        ],
+    }
+    update = {"$set": {"status": "sending", "claim_token": token, "lease_until": lease_until,
+                       "last_attempt_at": stamp, "org_id": org_id},
+              "$inc": {"attempts": 1}}
+    try:
+        claimed = await db.briefs_sent.find_one_and_update(eligible, update)
+        if claimed:
+            return token
+        await db.briefs_sent.insert_one({
+            "key": key, "org_id": org_id, "status": "sending", "claim_token": token,
+            "lease_until": lease_until, "created_at": stamp, "last_attempt_at": stamp, "attempts": 1,
+        })
+        return token
+    except Exception as exc:
+        # A concurrent first insert can win the unique-key race. Try to claim its
+        # now-existing retryable record; otherwise another worker owns it or it is sent.
+        if "duplicate" not in str(exc).lower():
+            logger.exception("Could not claim daily brief %s", key)
+            return None
+        try:
+            claimed = await db.briefs_sent.find_one_and_update(eligible, update)
+            return token if claimed else None
+        except Exception:
+            logger.exception("Could not reclaim daily brief %s", key)
+            return None
+
+
 async def send_briefs() -> int:
     n = 0
     orgs = await db.orgs.find({"deleted": {"$ne": True}, "briefs.enabled": {"$ne": False}}, {"_id": 0}).to_list(5000)
@@ -174,18 +291,45 @@ async def send_briefs() -> int:
             members = await db.members.find({"org_id": org["org_id"], "status": "active"}, {"_id": 0}).to_list(500)
             for m in members:
                 key = f"{m['member_id']}:{kind}:{day}"
-                try:
-                    await db.briefs_sent.insert_one({"key": key, "org_id": org["org_id"], "created_at": iso()})
-                except Exception:
+                stamp = iso(t)
+                claim_token = await _claim_brief(key, org["org_id"], stamp)
+                if not claim_token:
                     continue
-                if kind == "brief":
-                    text = await build_brief(org, m)
-                    await notify(m, org=org, kind="brief", text=text, template="konnto_brief", params=[org["name"], text.replace("\n", " ")[:600]],
-                                 email_subject=f"Your morning brief — {org['name']}", link_path="/app/dashboard", email_fallback=is_owner(m))
-                else:
-                    done_today = await db.items.count_documents({"org_id": org["org_id"], "status": "done", "done_at": {"$gte": iso(t - timedelta(hours=14))},
-                                                                  "$or": [{"assignee_id": m["member_id"]}, {"created_by": m["member_id"]}]})
-                    text = f"Anything to remember from today, {m['name'].split()[0]}? Just reply with it." + (f" ({done_today} things done today.)" if done_today else "")
-                    await notify(m, org=org, kind="evening", text=text, template="konnto_brief", params=[org["name"], text], email_fallback=False)
-                n += 1
+                try:
+                    if kind == "brief":
+                        message = await build_brief(org, m)
+                        result = await notify(m, org=org, kind="brief", text=message, template="konnto_brief",
+                                              params=[org["name"], message.replace("\n", " ")[:600]],
+                                              email_subject=f"Your morning brief — {org['name']}", link_path="/app/dashboard",
+                                              email_fallback=is_owner(m))
+                    else:
+                        done_today = await db.items.count_documents({
+                            "org_id": org["org_id"], "status": "done",
+                            "done_at": {"$gte": iso(t - timedelta(hours=14))},
+                            "$or": [{"assignee_id": m["member_id"]}, {"created_by": m["member_id"]}],
+                        })
+                        message = f"Anything to remember from today, {m['name'].split()[0]}? Just reply with it." + (f" ({done_today} things done today.)" if done_today else "")
+                        result = await notify(m, org=org, kind="evening", text=message, template="konnto_brief",
+                                              params=[org["name"], message], email_fallback=False)
+                    delivered = bool(result.get("in_app") or result.get("whatsapp") == "sent" or result.get("email") == "sent")
+                    if delivered:
+                        await db.briefs_sent.update_one(
+                            {"key": key, "claim_token": claim_token},
+                            {"$set": {"status": "sent", "sent_at": iso(), "delivery": result},
+                             "$unset": {"claim_token": "", "lease_until": ""}},
+                        )
+                        n += 1
+                    else:
+                        await db.briefs_sent.update_one(
+                            {"key": key, "claim_token": claim_token},
+                            {"$set": {"status": "failed", "last_error": "No delivery channel confirmed"},
+                             "$unset": {"claim_token": "", "lease_until": ""}},
+                        )
+                except Exception as exc:
+                    logger.exception("Daily brief delivery failed for %s", key)
+                    await db.briefs_sent.update_one(
+                        {"key": key, "claim_token": claim_token},
+                        {"$set": {"status": "failed", "last_error": str(exc)[:300]},
+                         "$unset": {"claim_token": "", "lease_until": ""}},
+                    )
     return n

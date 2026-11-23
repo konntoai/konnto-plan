@@ -3,6 +3,7 @@ import re
 import math
 import logging
 from datetime import timedelta
+from html import escape
 from typing import Optional, AsyncGenerator
 
 from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso, fmt_local, app_link,
@@ -10,6 +11,10 @@ from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso,
                   SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits, org_tz, fact_scope_query, fact_category, can_read_rules)
 from channels import notify, add_notice, wa_send, wa_join_link, wa_configured
 import brain
+from kbrain_memory import build_user_confirmed_fact
+from kbrain_context import build_analysis_context
+from kbrain_retrieval import rank_sources
+from kbrain_diagnostics import build_operational_diagnostics
 
 logger = logging.getLogger("konnto.engine")
 
@@ -163,7 +168,14 @@ async def ensure_project(org_id: str, name: Optional[str], actor: dict) -> Optio
     return pid
 
 
-async def create_item(org: dict, actor: dict, data: dict, source: Optional[dict] = None, notify_assignee: bool = True) -> dict:
+async def create_item(org: dict, actor: dict, data: dict, source: Optional[dict] = None, notify_assignee: bool = True,
+                      idempotency_key: Optional[str] = None) -> dict:
+    # Deterministic Mongo _id makes retries of a confirmed proposal converge on
+    # one Work item even if the request crashes before its chat card is updated.
+    if idempotency_key:
+        existing = await db.items.find_one({"_id": idempotency_key, "org_id": org["org_id"]}, {"_id": 0})
+        if existing:
+            return existing
     people = await org_people(org["org_id"])
     assignee = None
     if data.get("assignee_id"):
@@ -196,8 +208,19 @@ async def create_item(org: dict, actor: dict, data: dict, source: Optional[dict]
         "history": [_hist(actor["name"], f"Created{' for ' + assignee['name'] if assignee and assignee['member_id'] != actor['member_id'] else ''}")],
         "created_at": iso(), "updated_at": iso(), "done_at": None,
     }
-    await db.items.insert_one(dict(item))
-    item.pop("_id", None)
+    stored_item = dict(item)
+    if idempotency_key:
+        stored_item["_id"] = idempotency_key
+        stored_item["idempotency_key"] = idempotency_key
+    try:
+        await db.items.insert_one(stored_item)
+    except Exception as exc:
+        if not idempotency_key or getattr(exc, "code", None) != 11000:
+            raise
+        existing = await db.items.find_one({"_id": idempotency_key, "org_id": org["org_id"]}, {"_id": 0})
+        if not existing:
+            raise
+        return existing
     await audit(org["org_id"], actor["member_id"], "item_created", {"item_id": item["item_id"], "title": item["title"]})
     if notify_assignee and assignee and assignee["member_id"] != actor["member_id"] and kind in ("task", "promise", "reminder"):
         await deliver_task(org, actor, assignee, item)
@@ -611,8 +634,13 @@ async def retrieve(org: dict, member: dict, query: str, text: str, include_open:
             add("document", d["doc_id"], d["filename"], f"{d.get('summary', '')[:200]} {kd} {_snippet(d.get('text', ''), words)}", f"/app/documents?doc={d['doc_id']}")
         fq = fact_scope_query(member)
         fq["$and"] = [{"text": rx}] + ([{"text": fq.pop("text")}] if "text" in fq else [])
-        for f in await db.knowledge.find(fq, {"_id": 0}).to_list(6):
-            add("fact", f["fact_id"], f["text"][:80], f"{f['text']} (source: {f.get('source') or 'chat'}, added by {f.get('created_by_name') or '-'} on {fmt_local(f.get('created_at'), org)})", "/app/knowledge")
+        for f in await db.knowledge.find(fq, {"_id": 0}).sort([("updated_at", -1), ("created_at", -1)]).to_list(6):
+            evidence = f.get("evidence_type") or "legacy_unclassified"
+            verification = f.get("verification_status") or "legacy_status_unknown"
+            provenance = (f"evidence: {evidence}; verification: {verification}; "
+                          f"source: {f.get('source') or 'unspecified'}; "
+                          f"added by {f.get('created_by_name') or '-'} on {fmt_local(f.get('created_at'), org) or 'unknown date'}")
+            add("fact", f["fact_id"], f["text"][:80], f"{f['text']} ({provenance})", "/app/knowledge")
         for pj in await db.projects.find({"org_id": org["org_id"], "name": rx}, {"_id": 0}).to_list(3):
             its = await db.items.find({**item_scope_query(member), "project_id": pj["project_id"]}, {"_id": 0, "history": 0}).to_list(30)
             if its or has_scope(member, "team_work"):
@@ -632,6 +660,10 @@ async def retrieve(org: dict, member: dict, query: str, text: str, include_open:
     if include_open and has_scope(member, "approve"):
         for a in await db.approvals.find({"org_id": org["org_id"], "status": "pending"}, {"_id": 0}).to_list(5):
             add("approval", a["approval_id"], f"Approval: {a['title']}", f"asked by {a['requested_by_name']}, {a['kind']}" + (f", {money(a.get('amount'), a.get('currency'))}" if a.get('amount') is not None else ""), "/app/approvals")
+    # Rank authorised evidence deterministically; preserve retrieval order on ties.
+    sources = rank_sources(query or text, sources)
+    for index, source in enumerate(sources, 1):
+        source["n"] = index
     return sources
 
 
@@ -718,8 +750,10 @@ async def live_state(org: dict, member: dict) -> str:
     if roster:
         out.append("People: " + "; ".join(roster[:25]))
     # approvals
+    diagnostic_approvals = []
     if has_scope(member, "approve"):
         aps = await db.approvals.find({"org_id": org["org_id"], "status": "pending"}, {"_id": 0}).sort("created_at", 1).to_list(30)
+        diagnostic_approvals = aps
         total = sum(float(a.get("amount") or 0) for a in aps)
         if aps:
             out.append(f"Approvals waiting for {member['name'].split(' ')[0]} ({len(aps)}, {_short_money(total, ccy)} in money requests):")
@@ -731,11 +765,22 @@ async def live_state(org: dict, member: dict) -> str:
             out.append("Approvals waiting: none.")
     else:
         mine = await db.approvals.find({"org_id": org["org_id"], "requested_by": member["member_id"], "status": "pending"}, {"_id": 0}).to_list(10)
+        diagnostic_approvals = mine
         if mine:
             out.append("Your requests still waiting for the owner:")
             out += [f"- {a['title']} (waiting {_ago(a.get('created_at'))})" for a in mine]
     # work
     items = await visible_open_items(member, 80)
+    diagnostics = build_operational_diagnostics(items, diagnostic_approvals, reference_time=iso(ref))
+    dm = diagnostics["metrics"]
+    out.append(
+        "K-BRAIN operational indicators (based only on records visible to this user; "
+        "not a business-health score or full financial audit): "
+        f"{dm['open_work_items']} open work, {dm['overdue_work_items']} overdue, "
+        f"{dm['stuck_work_items']} stuck, {dm['due_within_24_hours']} due within 24h, "
+        f"{dm['pending_approvals']} visible pending approvals, "
+        f"{dm['pending_approvals_older_than_7_days']} older than 7 days."
+    )
     buckets = {"overdue": [], "due": [], "stuck": [], "delayed": [], "in_progress": [], "open": []}
     for i in items:
         st = item_state(i, ref)
@@ -766,6 +811,20 @@ async def live_state(org: dict, member: dict) -> str:
             out += [line(i) for i in b[:10 if key != 'open' else 8]]
     if not items:
         out.append("Open work: none.")
+    # PCM instruction register — scoped to the current member's authorised responsibilities.
+    pcm_query = {"org_id": org["org_id"], "deleted": {"$ne": True}}
+    if not is_owner(member) and not has_scope(member, "team_work"):
+        pcm_query["$or"] = [{"assignee_id": member["member_id"]}, {"issued_by": member["member_id"]}]
+    pcm_rows = await db.pcm_instructions.find(pcm_query, {"_id": 0}).sort("updated_at", -1).to_list(20)
+    if pcm_rows:
+        out.append("KONNTO PCM instruction register (live status; not proof of completed work):")
+        for row in pcm_rows[:12]:
+            line = f"- {row.get('title')} | {row.get('status')} | responsible: {row.get('assignee_name')} | issued by: {row.get('issued_by_name')}"
+            if row.get("due_at"):
+                line += f" | due {fmt_local(row['due_at'], org)}"
+            if row.get("blocker"):
+                line += f" | blocker: {row['blocker'][:160]}"
+            out.append(line)
     # standing instructions / temporary handovers
     rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
     if rules:
@@ -774,10 +833,17 @@ async def live_state(org: dict, member: dict) -> str:
             exp = f" (until {fmt_local(r['expires_at'], org)})" if r.get("expires_at") else ""
             out.append(f"- {r['text']}{exp}")
     # business facts (cash, suppliers, policies)
-    facts = await db.knowledge.find(fact_scope_query(member), {"_id": 0}).sort("created_at", -1).to_list(25)
+    facts = await db.knowledge.find(fact_scope_query(member), {"_id": 0}).sort([("updated_at", -1), ("created_at", -1)]).to_list(25)
     if facts:
-        out.append("K-MEMORY confirmed business facts (newest first; flag conflicts):")
-        out += [f"- [{f.get('category') or fact_category(f['text'])}] {f['text'][:220]} (added {fmt_local(f.get('created_at'), org)} by {f.get('created_by_name') or '-'})" for f in facts]
+        out.append("K-MEMORY user-supplied business memory (newest first; user confirmation is not independent verification; flag conflicts):")
+        out += [
+            f"- [{f.get('category') or fact_category(f['text'])}] {f['text'][:220]} "
+            f"(verification: {f.get('verification_status') or 'legacy_status_unknown'}; "
+            f"evidence: {f.get('evidence_type') or 'legacy_unclassified'}; "
+            f"source: {f.get('source') or 'unspecified'}; "
+            f"added {fmt_local(f.get('created_at'), org)} by {f.get('created_by_name') or '-'})"
+            for f in facts
+        ]
     # projects
     projects = await db.projects.find({"org_id": org["org_id"], "status": {"$ne": "archived"}}, {"_id": 0}).to_list(30)
     pj_lines = []
@@ -881,6 +947,7 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
             summaries.append(f"Did not draft '{data['title']}' again — an open item with this title already exists")
             continue
         cards.append({"card_id": new_id("crd"), "type": "proposal", "status": "pending", "data": data})
+        existing_titles.add(data["title"].strip().lower())
         summaries.append(f"DRAFTED (not saved — waits for the user to tap Save) a {data['kind']}: {data['title']}" + (f" for {data['assignee_name']}" if data.get('assignee_name') else ""))
 
     for a in (analysis.get("actions") or [])[:6]:
@@ -957,8 +1024,11 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
                     summaries.append("External users cannot add to company memory; nothing was drafted")
                 else:
                     cat = fact_category(a["text"], a.get("category"))
-                    cards.append(_draft("fact", {"text": a["text"][:400], "category": cat}))
-                    summaries.append(f"DRAFTED a K-MEMORY fact (not saved — waits for Confirm): {a['text'][:160]}")
+                    # Memory writes remain confirmation-gated. The category is descriptive;
+                    # provenance and verification state are assigned by the server on save.
+                    cards.append(_draft("fact", {"text": a["text"][:400], "category": cat,
+                                                 "evidence_type": "user_confirmed_fact"}))
+                    summaries.append(f"DRAFTED a K-MEMORY fact for confirmation (not yet saved): {a['text'][:160]}")
             elif t == "handover" and (a.get("person") or a.get("name")):
                 a["person"] = a.get("person") or a.get("name")
                 p = find_person(people, a["person"], member)
@@ -1032,11 +1102,30 @@ async def apply_draft(org: dict, member: dict, card: dict) -> Optional[str]:
     elif t == "fact":
         if member.get("member_type") == "partner":
             return "External users cannot add to company memory."
-        fid = new_id("fct")
-        await db.knowledge.insert_one({"fact_id": fid, "org_id": org["org_id"], "text": d["text"][:400], "category": d.get("category") or fact_category(d["text"]),
-                                       "source": "chat (confirmed)", "confirmed": True, "created_by": member["member_id"], "created_by_name": member["name"], "created_at": iso()})
-        card["status"] = "saved"
-        card["data"] = {**d, "fact_id": fid}
+        fact_text = (d.get("text") or "").strip()[:400]
+        if not fact_text:
+            return "The memory entry is empty."
+        # Idempotency: confirming the same active fact twice must not create duplicates.
+        existing = await db.knowledge.find_one({"org_id": org["org_id"], "text": fact_text,
+                                                "deleted": {"$ne": True}}, {"_id": 0})
+        if existing:
+            card["status"] = "saved"
+            card["data"] = {**d, "fact_id": existing["fact_id"], "already_exists": True}
+        else:
+            fid = new_id("fct")
+            created = iso()
+            fact = build_user_confirmed_fact(
+                fact_id=fid,
+                org_id=org["org_id"],
+                text=fact_text,
+                category=d.get("category") or fact_category(fact_text),
+                member=member,
+                source="chat (user confirmed)",
+                created_at=created,
+            )
+            await db.knowledge.insert_one(dict(fact))
+            card["status"] = "saved"
+            card["data"] = {**d, "fact_id": fid, "already_exists": False}
     elif t == "decision":
         ap = await db.approvals.find_one({"org_id": org["org_id"], "approval_id": d["approval_id"]}, {"_id": 0})
         if not has_scope(member, "approve"):
@@ -1104,9 +1193,20 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     open_items = await visible_open_items(member, 40)
     approvals = await pending_approvals_for(member)
     rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
-    untrusted = (f"<untrusted_input source=\"attachments\">\n{extra_context[:3000]}\n</untrusted_input>" if extra_context else "")
+    untrusted = (f"<untrusted_input source=\"attachments\">\n{escape(extra_context[:3000])}\n</untrusted_input>" if extra_context else "")
     full_text = text + (f"\n\n{untrusted}" if untrusted else "")
-    analysis = await brain.analyze(org, member, full_text, people, open_items, approvals, rules, cfg, role)
+
+    # Evidence-first pipeline: retrieve authorised business context BEFORE the
+    # model classifies intent or proposes any action. The analysis model receives
+    # the same bounded evidence packet that will ground the final response.
+    sources = await retrieve(org, member, text, text, include_open=True)
+    live = await live_state(org, member)
+    business_context = build_analysis_context(live, sources)
+    analysis = await brain.analyze(
+        org, member, full_text, people, open_items, approvals, rules, cfg, role,
+        business_context=business_context,
+    )
+
     source = {"type": channel, "msg_id": user_msg["msg_id"]}
     cards, summaries = await execute_actions(org, member, analysis, people, source)
     for a in attachments:
@@ -1114,10 +1214,9 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
             cards.append({"card_id": new_id("crd"), "type": "doc", "status": "saved", "data": {"doc_id": a["doc_id"], "filename": a.get("filename"), "summary": a.get("summary", "")[:400]}})
     yield {"type": "cards", "cards": cards}
 
-    sources = await retrieve(org, member, analysis.get("search_query") or "", text, include_open=True)
-    live = await live_state(org, member)
     history = await _history(member)
     extra = (f"\nAttached content sent with this message:\n{untrusted}\n" if untrusted else "")
+    extra += "\n\n" + brain.branch_context(analysis)
     if analysis.get("failed"):
         extra += "\n(Understanding step failed; answer helpfully and say nothing was drafted or saved.)"
     trusted = trusted_context(org, member, role)
@@ -1128,6 +1227,8 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     reply = "".join(out).strip()
     msg = {"msg_id": new_id("bm"), "org_id": org["org_id"], "member_id": member["member_id"], "role": "assistant", "kind": "message",
            "text": reply, "cards": cards, "citations": _citations(reply, sources), "language": analysis.get("language"),
+           "brain_branch": analysis.get("branch", "general"), "brain_subdomain": analysis.get("subdomain", "other"),
+           "brain_response_mode": analysis.get("response_mode", "direct"), "brain_reasoning_level": analysis.get("reasoning_level", "standard"),
            "channel": channel, "reply_to": user_msg["msg_id"], "created_at": iso()}
     await db.brain_messages.insert_one(dict(msg))
     msg.pop("_id", None)
@@ -1150,11 +1251,13 @@ async def save_proposal(org: dict, member: dict, data: dict, source: dict) -> di
     payload["remind_at_utc"] = data.get("remind_at")
     payload.pop("due_at", None)
     payload.pop("remind_at", None)
-    return await create_item(org, member, payload, source=source)
+    card_id = source.get("card_id")
+    key = f"proposal:{org['org_id']}:{card_id}" if card_id else None
+    return await create_item(org, member, payload, source=source, idempotency_key=key)
 
 
 async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Optional[dict] = None) -> dict:
-    msg = await db.brain_messages.find_one({"member_id": member["member_id"], "cards.card_id": card_id}, {"_id": 0})
+    msg = await db.brain_messages.find_one({"org_id": org["org_id"], "member_id": member["member_id"], "cards.card_id": card_id}, {"_id": 0})
     if not msg:
         return {"error": "not_found"}
     card = next(c for c in msg["cards"] if c["card_id"] == card_id)
@@ -1165,7 +1268,7 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             if edits and edits.get("assignee_id"):
                 p = await db.members.find_one({"member_id": edits["assignee_id"], "org_id": org["org_id"]}, {"_id": 0})
                 data["assignee_name"] = p["name"] if p else None
-            item = await save_proposal(org, member, data, {"type": "chat", "msg_id": msg["msg_id"]})
+            item = await save_proposal(org, member, data, {"type": "chat", "msg_id": msg["msg_id"], "card_id": card_id})
             card["data"] = data
             card["status"], card["item_id"] = "saved", item["item_id"]
             result = {"item": item}
@@ -1235,7 +1338,7 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             await db.items.update_one({"item_id": card["data"]["item_id"], "org_id": org["org_id"]}, {"$set": {**prev, "updated_at": iso()},
                                        "$push": {"history": _hist(member["name"], "Undid last change")}})
             card["status"] = "undone"
-    await db.brain_messages.update_one({"msg_id": msg["msg_id"]}, {"$set": {"cards": msg["cards"]}})
+    await db.brain_messages.update_one({"msg_id": msg["msg_id"], "org_id": org["org_id"], "member_id": member["member_id"]}, {"$set": {"cards": msg["cards"]}})
     return {"card": card, **result}
 
 
