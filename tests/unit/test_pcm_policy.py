@@ -1,12 +1,14 @@
 import unittest
 
-from backend.pcm_policy import can_issue, can_view, progress_update_filter, progress_update_document
-
-from backend.pcm_policy import (\n    can_issue, can_view, progress_update_filter, progress_update_document,\n)
+from backend.pcm_policy import (
+    can_issue,
+    can_view,
+    progress_update_filter,
+    progress_update_document,
+)
 
 
 class PCMPolicyTests(unittest.TestCase):
-
     def test_progress_filter_is_org_scoped_and_compare_and_set(self):
         record = {"updated_at": "2026-11-23T10:00:00.000Z", "status": "in_progress"}
         query = progress_update_filter("pcm_1", "org_1", record)
