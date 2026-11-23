@@ -13,8 +13,7 @@ from pydantic import BaseModel, Field
 from core import db, iso, now, new_id, parse_iso, get_ctx, has_scope, is_owner, audit
 from channels import notify
 import engine
-from pcm_policy import (can_issue as policy_can_issue, can_view as policy_can_view,\n                        progress_update_filter, progress_update_document)
-
+from pcm_policy import can_issue as policy_can_issue, can_view as policy_can_view, progress_update_filter, progress_update_document
 router = APIRouter(prefix="/api/pcm")
 
 
