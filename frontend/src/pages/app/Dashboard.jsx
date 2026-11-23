@@ -46,7 +46,6 @@ export default function DashboardPage() {
   if (!data) return (
     <div className="p-4 lg:p-8 max-w-[1180px] mx-auto space-y-5">
       <Skeleton className="h-10 w-56" />
-      <div className="mb-4 rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950" data-testid="temporary-deploy-check">TEMPORARY DEPLOY CHECK — V2 FOUNDATION</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-3xl" />)}</div>
       <Skeleton className="h-56 rounded-3xl" />
     </div>
