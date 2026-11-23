@@ -16,15 +16,18 @@ def iso(value=None):
     return value.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
 
 
-async def reconcile_pcm_work_sync(limit: int = 100) -> dict:
+async def reconcile_pcm_work_sync(limit: int = 100, database=None) -> dict:
     """Apply pending PCM sync intents; safe to replay after a worker crash.
 
     The operation id is persisted on the Work item in the same atomic update
     as its status/history. A retry after that update becomes a no-op.
     """
+    database = database if database is not None else db
+    if database is None:
+        raise RuntimeError('PCM sync database is not configured')
     stamp = iso()
     stale = iso(now() - timedelta(minutes=10))
-    rows = await db.pcm_instructions.find({
+    rows = await database.pcm_instructions.find({
         "work_sync.status": {"$in": ["pending", "processing"]},
         "deleted": {"$ne": True},
     }, {"_id": 0}).sort("updated_at", 1).to_list(limit)
@@ -71,7 +74,7 @@ async def reconcile_pcm_work_sync(limit: int = 100) -> dict:
                     update["stuck_reason"] = intent.get("reason") or "Blocked through PCM"
             if intent.get("due_at") is not None:
                 update["due_at"] = intent["due_at"]
-            changed = await db.items.update_one(
+            changed = await database.items.update_one(
                 {"item_id": item_id, "org_id": claim["org_id"], "pcm_sync_operation_id": {"$ne": op_id}},
                 {"$set": update, "$push": {"history": {
                     "at": stamp, "by": "KONNTO PCM",
