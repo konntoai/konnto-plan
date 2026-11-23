@@ -169,7 +169,8 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
         push_ops["evidence"] = {"at": iso(), "by": member["name"], "text": evidence_text}
     changed = await db.pcm_instructions.update_one(
         {"instruction_id": instruction_id, "org_id": org["org_id"],
-         "status": {"$nin": ["completed", "cancelled"]}, "deleted": {"$ne": True}},
+         "status": {"$nin": ["completed", "cancelled"]}, "updated_at": record.get("updated_at"),
+         "deleted": {"$ne": True}},
         {"$set": upd, "$push": push_ops},
     )
     if not changed.matched_count:
