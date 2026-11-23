@@ -1,0 +1,30 @@
+name: KONNTO safe quality checks
+
+on:
+  push:
+    branches:
+      - konnto-v2-foundation
+  pull_request:
+    branches:
+      - main
+      - konnto-v2-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  python-static-and-policy-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile backend Python source
+        run: python -m compileall -q backend
+      - name: Run isolated PCM policy tests
+        env:
+          PYTHONPATH: .
+        run: python -m unittest discover -s tests/unit -p "test_*.py" -v
