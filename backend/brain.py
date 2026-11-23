@@ -16,7 +16,6 @@ from kbrain_workflow import ROUTER_INSTRUCTIONS, branch_context
 logger = logging.getLogger("konnto.brain")
 KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 MODEL = "claude-sonnet-4-6"
-FAST = "claude-haiku-4-5-20251001"
 
 DEFAULT_BRAIN = {
     "personality": "Practical, experienced business advisor. Warm but direct. Uses the business's own records, names and numbers.",
