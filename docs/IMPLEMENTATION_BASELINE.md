@@ -26,6 +26,13 @@ KONNTO CENTRAL/global portfolio intelligence, Tally, Zoho, banking integrations,
 marketplace functionality. WhatsApp and email must be treated as available only
 when their integration configuration and delivery status are verified. Do not claim these are available.
 
+## Universal product and onboarding rule
+KONNTO must remain industry-neutral. Never assume construction or any other
+sector from founder/customer examples or historical context. Discover the user's
+actual business model through optional, conversational questions. Support
+individuals and professionals without forcing a company profile. If industry is
+unknown, preserve it as unknown and continue with neutral workflows.
+
 ## Implementation principles
 1. Preserve working functionality; do not rebuild the application from scratch.
 2. Backend permissions and tenant isolation are authoritative.
