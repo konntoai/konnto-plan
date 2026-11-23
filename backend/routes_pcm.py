@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from core import db, iso, now, new_id, parse_iso, get_ctx, has_scope, is_owner, audit
 from channels import notify
 import engine
-from pcm_policy import can_issue as policy_can_issue, can_view as policy_can_view, progress_update_filter, progress_update_document
+from pcm_policy import can_issue as policy_can_issue, can_view as policy_can_view, progress_update_filter, progress_update_document, work_status_for_pcm, work_sync_intent
 router = APIRouter(prefix="/api/pcm")
 
 
@@ -106,7 +106,7 @@ async def create_instruction(body: InstructionIn, ctx: dict = Depends(get_ctx)):
         "kind": "task", "title": body.title, "details": body.details,
         "assignee_id": target["member_id"], "due_at_utc": due,
         "is_request": True, "private": False,
-    }, source={"type": "pcm"})
+    }, source={"type": "pcm"}, notify_assignee=False)
     record = {
         "instruction_id": new_id("pcm"), "org_id": org["org_id"],
         "title": body.title.strip(), "details": body.details.strip(),
@@ -121,7 +121,11 @@ async def create_instruction(body: InstructionIn, ctx: dict = Depends(get_ctx)):
             "event": "issued", "note": "Instruction issued through KONNTO PCM."
         }], "evidence": [], "deleted": False,
     }
-    await db.pcm_instructions.insert_one(dict(record))
+    try:
+        await db.pcm_instructions.insert_one(dict(record))
+    except Exception:
+        await db.items.delete_one({"item_id": item["item_id"], "org_id": org["org_id"], "source.type": "pcm"})
+        raise
     await audit(org["org_id"], member["member_id"], "pcm_instruction_issued", {
         "instruction_id": record["instruction_id"], "item_id": item["item_id"], "assignee_id": target["member_id"]
     })
@@ -165,6 +169,9 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
         blocker=(body.note or "").strip()[:2000] if body.status == "blocked" else None,
         due_at=due,
         evidence_entry=evidence_entry,
+        work_sync=work_sync_intent(body.status, operation_id=new_id("pcmsync"), due_at=due,
+                                   reason=(body.note or "").strip())
+        if record.get("item_id") and (work_status_for_pcm(body.status) or due is not None) else None,
     )
     changed = await db.pcm_instructions.update_one(
         progress_update_filter(instruction_id, org["org_id"], record),
@@ -172,17 +179,7 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
     )
     if not changed.matched_count:
         raise HTTPException(409, "This instruction was closed or changed. Refresh and try again.")
-    # Keep the underlying Work item in sync with verified progress.
-    if record.get("item_id"):
-        item = await db.items.find_one({"item_id": record["item_id"], "org_id": org["org_id"]}, {"_id": 0})
-        if item:
-            if body.new_due_at:
-                await db.items.update_one({"item_id": record["item_id"], "org_id": org["org_id"]},
-                                          {"$set": {"due_at": due, "updated_at": iso()}})
-                item["due_at"] = due
-            mapped = {"in_progress": "in_progress", "blocked": "stuck", "completed": "done"}
-            if body.status in mapped:
-                await engine.set_item_status(org, member, item, mapped[body.status], body.note, via="pcm")
+    # The durable work_sync intent is replayed by the PCM sync worker.
     if body.status == "blocked" or body.status == "completed":
         recipient_id = record["issued_by"] if member["member_id"] != record["issued_by"] else None
         recipient = await db.members.find_one({"member_id": recipient_id, "org_id": org["org_id"], "status": "active"}, {"_id": 0}) if recipient_id else None
