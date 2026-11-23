@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - konnto-v2-foundation
+      - kbrain-workflow-v1
   pull_request:
     branches:
       - main
@@ -24,6 +25,9 @@ jobs:
           python-version: "3.11"
       - name: Compile backend Python source
         run: python -m compileall -q backend
+      - name: Run K-BRAIN workflow tests
+        working-directory: backend
+        run: python -m pytest -q test_kbrain_workflow.py
       - name: Run isolated PCM policy tests
         env:
           PYTHONPATH: .
