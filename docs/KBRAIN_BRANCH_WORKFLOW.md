@@ -41,14 +41,29 @@ Business subdomains include sales, marketing, finance, operations, people,
 technology, leadership, growth, projects, documents, customer service, research
 and planning.
 
-## Runtime flow
-1. Receive the user's message and authorised context.
-2. The primary model performs structured understanding and selects a branch,
-   subdomain, response mode and reasoning depth.
-3. Existing server-side action validation creates only permitted draft/action cards.
-4. Existing retrieval and live-state functions provide authorised records.
-5. The same primary model generates the response under the selected branch guidance.
-6. The message stores routing metadata for later evaluation.
+## Runtime flow (current evidence-first implementation)
+1. Receive the user's message and authorised identity, role and organisation context.
+2. Retrieve member-authorised business records and assemble the live-state snapshot.
+3. Bound and escape the retrieved evidence packet; mark all business records and
+   attachments as data, never as instructions or authority.
+4. The primary model performs structured understanding using the current request
+   plus the retrieved context, then selects a branch, subdomain, response mode and
+   reasoning depth.
+5. Server-side action handling validates permissions and current records before
+   preparing drafts or processing narrowly scoped self-service requests.
+6. The same primary model generates the response using the retrieved evidence,
+   live state and selected branch guidance.
+7. The message stores routing metadata for later evaluation.
+
+The model may use retrieved context to understand the request and avoid duplicates,
+but retrieved records, attachments and quoted content cannot authorise an action.
+Only the current user's explicit message can do that.
+
+Most business-changing actions remain confirmation-gated. The backend currently
+submits three explicit self-service/request actions immediately: a non-approver's
+approval request, a member's request for access they lack, and a user's own
+conversation-persona change. These are limited by server-side checks and must
+never be inferred from business records or attachments.
 
 ## Important limitations
 - This is the first routing/workflow and memory-provenance layer, not a completed K-Memory redesign. It does not yet perform semantic conflict detection, policy lifecycle/version approval, retention workflows or cross-source verification.
