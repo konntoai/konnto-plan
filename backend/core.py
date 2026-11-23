@@ -257,7 +257,7 @@ async def get_ctx(user: dict = Depends(current_user), x_org_id: Optional[str] = 
 def item_scope_query(member: dict) -> dict:
     """Mongo filter for the items a member may see (always org-scoped)."""
     mid = member["member_id"]
-    base = {"org_id": member["org_id"], "deleted": {"$ne": True}}
+    base = {"org_id": member["org_id"], "deleted": {"$ne": True}, "lifecycle_status": {"$ne": "superseded"}}
     private_ok = {"$or": [{"visibility": {"$ne": "private"}}, {"created_by": mid}]}
     if has_scope(member, "team_work"):
         return {**base, **private_ok}
