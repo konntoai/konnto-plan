@@ -21,7 +21,7 @@ def card_operation_record(operation_id: str, org_id: str, member_id: str, card_i
 
 def card_operation_outcome(status: str, result=None) -> dict:
     if status == "completed":
-        return {"result": result}
+        return result if isinstance(result, dict) else {"result": result}
     if status == "needs_review":
         return {"error": "action_needs_review", "message": "This action may have partially completed. Review its outcome before trying again."}
     return {"error": "action_in_progress", "message": "This action is already being processed."}
