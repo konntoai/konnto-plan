@@ -37,7 +37,7 @@ def build_operational_diagnostics(items, approvals=None, *, reference_time=None)
         if row.get("status") == "stuck":
             stuck.append(row)
         dependencies = row.get("depends_on") or []
-        if any(status_by_id.get(dep) != "done" for dep in dependencies):
+        if any(dep in status_by_id and status_by_id.get(dep) != "done" for dep in dependencies):
             unresolved_dependencies.append(row)
     approval_rows = [row for row in (approvals or []) if isinstance(row, dict) and row.get("status") == "pending"]
     aged_approvals = []
