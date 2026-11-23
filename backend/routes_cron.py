@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request, HTTPException
 from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner, new_id
 from channels import notify
 import engine
+from pcm_sync import reconcile_pcm_work_sync
 
 logger = logging.getLogger("konnto.cron")
 router = APIRouter(prefix="/api")
@@ -46,6 +47,7 @@ async def run_tick(run_id: str):
         stats["reminders"] = await send_reminders()
         stats["chased"] = await chase_late()
         stats["pcm_followups"] = await followup_pcm()
+        stats["pcm_work_sync"] = await reconcile_pcm_work_sync()
         stats["briefs"] = await send_briefs()
         await db.cron_runs.update_one({"run_id": run_id}, {"$set": {"status": "done", "stats": stats, "finished_at": iso()}})
     except Exception as e:
