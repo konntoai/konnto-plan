@@ -5,6 +5,8 @@ from backend.pcm_policy import (
     can_view,
     progress_update_filter,
     progress_update_document,
+    work_status_for_pcm,
+    work_sync_intent,
 )
 
 
@@ -57,6 +59,26 @@ class PCMPolicyTests(unittest.TestCase):
         self.assertFalse(can_view({"member_type": "team", "member_id": "c", "access": []}, record))
         self.assertFalse(can_view({"member_type": "partner", "member_id": "a", "access": []}, {"assignee_id": "z", "issued_by": "b"}))
 
+
+    def test_pcm_work_sync_intent_is_replayable_and_maps_states(self):
+        intent = work_sync_intent(
+            "blocked", operation_id="sync_123", due_at="2026-11-25T10:00:00Z",
+            reason="Waiting for material",
+        )
+        self.assertEqual(intent["operation_id"], "sync_123")
+        self.assertEqual(intent["status"], "pending")
+        self.assertEqual(intent["work_status"], "stuck")
+        self.assertEqual(intent["due_at"], "2026-11-25T10:00:00Z")
+        self.assertEqual(intent["reason"], "Waiting for material")
+        self.assertEqual(intent["attempts"], 0)
+
+    def test_pcm_status_mapping_is_explicit_and_does_not_guess(self):
+        self.assertEqual(work_status_for_pcm("in_progress"), "in_progress")
+        self.assertEqual(work_status_for_pcm("blocked"), "stuck")
+        self.assertEqual(work_status_for_pcm("completed"), "done")
+        self.assertEqual(work_status_for_pcm("cancelled"), "cancelled")
+        self.assertIsNone(work_status_for_pcm("acknowledged"))
+        self.assertIsNone(work_status_for_pcm("unknown"))
 
 if __name__ == "__main__":
     unittest.main()
