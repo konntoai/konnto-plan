@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from core import db, iso, now, new_id, parse_iso, get_ctx, has_scope, is_owner, audit
 from channels import notify
 import engine
-from pcm_policy import can_issue as policy_can_issue, can_view as policy_can_view
+from pcm_policy import (can_issue as policy_can_issue, can_view as policy_can_view,\n                        progress_update_filter, progress_update_document)
 
 router = APIRouter(prefix="/api/pcm")
 
@@ -147,31 +147,29 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
         "at": iso(), "actor_id": member["member_id"], "actor_name": member["name"],
         "event": body.status, "note": (body.note or "").strip()[:2000],
     }
-    upd = {"status": body.status, "updated_at": iso()}
-    if body.status == "blocked":
-        upd["blocker"] = (body.note or "").strip()[:2000]
-    elif body.status in ("acknowledged", "in_progress"):
-        upd["blocker"] = None
+    updated_at = iso()
+    due = None
     if body.new_due_at:
         parsed_due = parse_iso(body.new_due_at)
         if not parsed_due:
             raise HTTPException(400, "Invalid revised due date.")
         due = iso(parsed_due)
-        upd["due_at"] = due
 
-    # Persist the PCM state, audit trail and evidence in one atomic document update.
-    # The status predicate prevents two concurrent requests from updating a closed
-    # instruction after both have read an older copy.
-    push_ops = {"history": event}
+    # Persist PCM state, history and evidence as one compare-and-set document update.
+    evidence_entry = None
     if body.evidence:
         evidence_text = body.evidence.strip()[:2000]
         event["evidence"] = evidence_text
-        push_ops["evidence"] = {"at": iso(), "by": member["name"], "text": evidence_text}
+        evidence_entry = {"at": iso(), "by": member["name"], "text": evidence_text}
+    update_doc = progress_update_document(
+        body.status, updated_at, event,
+        blocker=(body.note or "").strip()[:2000] if body.status == "blocked" else None,
+        due_at=due,
+        evidence_entry=evidence_entry,
+    )
     changed = await db.pcm_instructions.update_one(
-        {"instruction_id": instruction_id, "org_id": org["org_id"],
-         "status": {"$nin": ["completed", "cancelled"]}, "updated_at": record.get("updated_at"),
-         "deleted": {"$ne": True}},
-        {"$set": upd, "$push": push_ops},
+        progress_update_filter(instruction_id, org["org_id"], record),
+        update_doc,
     )
     if not changed.matched_count:
         raise HTTPException(409, "This instruction was closed or changed. Refresh and try again.")
