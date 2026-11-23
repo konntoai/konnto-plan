@@ -11,7 +11,7 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, Te
 from core import db, now, iso, org_tz, log_usage, SCOPES, SAFE_SCOPES, fmt_local
 from kbrain_prompt_v2 import MASTER_PROMPT
 from kbrain_prompt import APP_OPERATING_NOTES
-from kbrain_workflow import ROUTER_INSTRUCTIONS
+from kbrain_workflow import ROUTER_INSTRUCTIONS, branch_context
 
 logger = logging.getLogger("konnto.brain")
 KEY = os.environ.get("EMERGENT_LLM_KEY", "")
