@@ -1,5 +1,16 @@
 # KONNTO AI v2 — Emergent implementation instructions
 
+## Long-term product direction
+KONNTO is a universal AI platform for individuals, businesses, professionals and
+organisations. Design the shared identity, memory, intelligence, permission and
+execution foundations to support these experiences without creating separate
+applications or duplicate AI engines.
+
+The first complete production-grade experience is KONNTO Business OS: K-BRAIN,
+KONNTO Chat, PCM, K-Memory, backend-enforced authority and data-backed business
+intelligence. Personal and Professional experiences are subsequent product phases.
+KONNTO CENTRAL/global intelligence remains deferred until the foundation is proven.
+
 ## Mission
 Upgrade the existing KONNTO AI application in this repository. Do not create a replacement app. Work only on the `konnto-v2-foundation` branch until reviewed. Keep `main` unchanged.
 
