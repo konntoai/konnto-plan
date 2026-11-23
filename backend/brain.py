@@ -27,7 +27,7 @@ DEFAULT_BRAIN = {
         {"q": "Who can see my data?", "a": "Only people in your business, and only what their job needs. Personal notes and one-to-one chats stay private."},
     ],
     "pricing_answers": "KONNTO is free during launch. Paid plans will come later; nobody is charged without agreeing first. Do not quote any prices.",
-    "welcome_message": "Hi {name}, I'm KONNTO. Tell me anything about your business — a task, a promise, a reminder, or a question. Start with one line about what your business does.",
+    "welcome_message": "Hi {name}, I'm KONNTO. I can help with your work and organisation, whatever your industry. Tell me what you do in your own words, or simply ask me for help with something you need today.",
 }
 
 
