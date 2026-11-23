@@ -5,9 +5,10 @@ import asyncio
 import logging
 from datetime import timedelta
 
+
 from fastapi import APIRouter, Request, HTTPException
 
-from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner
+from core import db, now, iso, parse_iso, org_tz, fmt_local, item_scope_query, item_state, has_scope, is_owner, new_id
 from channels import notify
 import engine
 
@@ -236,6 +237,45 @@ async def build_brief(org: dict, member: dict) -> str:
     return "\n".join(lines)
 
 
+async def _claim_brief(key: str, org_id: str, stamp: str):
+    """Claim a daily brief delivery; legacy key-only records remain retryable."""
+    token = new_id("briefclaim")
+    lease_until = iso(now() + timedelta(minutes=20))
+    eligible = {
+        "key": key,
+        "status": {"$ne": "sent"},
+        "$or": [
+            {"lease_until": None},
+            {"lease_until": {"$exists": False}},
+            {"lease_until": {"$lte": stamp}},
+        ],
+    }
+    update = {"$set": {"status": "sending", "claim_token": token, "lease_until": lease_until,
+                       "last_attempt_at": stamp, "org_id": org_id},
+              "$inc": {"attempts": 1}}
+    try:
+        claimed = await db.briefs_sent.find_one_and_update(eligible, update)
+        if claimed:
+            return token
+        await db.briefs_sent.insert_one({
+            "key": key, "org_id": org_id, "status": "sending", "claim_token": token,
+            "lease_until": lease_until, "created_at": stamp, "last_attempt_at": stamp, "attempts": 1,
+        })
+        return token
+    except Exception as exc:
+        # A concurrent first insert can win the unique-key race. Try to claim its
+        # now-existing retryable record; otherwise another worker owns it or it is sent.
+        if "duplicate" not in str(exc).lower():
+            logger.exception("Could not claim daily brief %s", key)
+            return None
+        try:
+            claimed = await db.briefs_sent.find_one_and_update(eligible, update)
+            return token if claimed else None
+        except Exception:
+            logger.exception("Could not reclaim daily brief %s", key)
+            return None
+
+
 async def send_briefs() -> int:
     n = 0
     orgs = await db.orgs.find({"deleted": {"$ne": True}, "briefs.enabled": {"$ne": False}}, {"_id": 0}).to_list(5000)
@@ -250,18 +290,45 @@ async def send_briefs() -> int:
             members = await db.members.find({"org_id": org["org_id"], "status": "active"}, {"_id": 0}).to_list(500)
             for m in members:
                 key = f"{m['member_id']}:{kind}:{day}"
-                try:
-                    await db.briefs_sent.insert_one({"key": key, "org_id": org["org_id"], "created_at": iso()})
-                except Exception:
+                stamp = iso(t)
+                claim_token = await _claim_brief(key, org["org_id"], stamp)
+                if not claim_token:
                     continue
-                if kind == "brief":
-                    text = await build_brief(org, m)
-                    await notify(m, org=org, kind="brief", text=text, template="konnto_brief", params=[org["name"], text.replace("\n", " ")[:600]],
-                                 email_subject=f"Your morning brief — {org['name']}", link_path="/app/dashboard", email_fallback=is_owner(m))
-                else:
-                    done_today = await db.items.count_documents({"org_id": org["org_id"], "status": "done", "done_at": {"$gte": iso(t - timedelta(hours=14))},
-                                                                  "$or": [{"assignee_id": m["member_id"]}, {"created_by": m["member_id"]}]})
-                    text = f"Anything to remember from today, {m['name'].split()[0]}? Just reply with it." + (f" ({done_today} things done today.)" if done_today else "")
-                    await notify(m, org=org, kind="evening", text=text, template="konnto_brief", params=[org["name"], text], email_fallback=False)
-                n += 1
+                try:
+                    if kind == "brief":
+                        message = await build_brief(org, m)
+                        result = await notify(m, org=org, kind="brief", text=message, template="konnto_brief",
+                                              params=[org["name"], message.replace("\n", " ")[:600]],
+                                              email_subject=f"Your morning brief — {org['name']}", link_path="/app/dashboard",
+                                              email_fallback=is_owner(m))
+                    else:
+                        done_today = await db.items.count_documents({
+                            "org_id": org["org_id"], "status": "done",
+                            "done_at": {"$gte": iso(t - timedelta(hours=14))},
+                            "$or": [{"assignee_id": m["member_id"]}, {"created_by": m["member_id"]}],
+                        })
+                        message = f"Anything to remember from today, {m['name'].split()[0]}? Just reply with it." + (f" ({done_today} things done today.)" if done_today else "")
+                        result = await notify(m, org=org, kind="evening", text=message, template="konnto_brief",
+                                              params=[org["name"], message], email_fallback=False)
+                    delivered = bool(result.get("in_app") or result.get("whatsapp") == "sent" or result.get("email") == "sent")
+                    if delivered:
+                        await db.briefs_sent.update_one(
+                            {"key": key, "claim_token": claim_token},
+                            {"$set": {"status": "sent", "sent_at": iso(), "delivery": result},
+                             "$unset": {"claim_token": "", "lease_until": ""}},
+                        )
+                        n += 1
+                    else:
+                        await db.briefs_sent.update_one(
+                            {"key": key, "claim_token": claim_token},
+                            {"$set": {"status": "failed", "last_error": "No delivery channel confirmed"},
+                             "$unset": {"claim_token": "", "lease_until": ""}},
+                        )
+                except Exception as exc:
+                    logger.exception("Daily brief delivery failed for %s", key)
+                    await db.briefs_sent.update_one(
+                        {"key": key, "claim_token": claim_token},
+                        {"$set": {"status": "failed", "last_error": str(exc)[:300]},
+                         "$unset": {"claim_token": "", "lease_until": ""}},
+                    )
     return n
