@@ -8,7 +8,7 @@ def test_analysis_entrypoint_accepts_and_forwards_business_context():
     names = {arg.arg for arg in analyze.args.args}
     assert "business_context" in names
     assert any(isinstance(node, ast.Call) and getattr(node.func, "id", "") == "analysis_system"
-               and any(keyword.arg == "business_context" for keyword in node.keywords)
+               and (any(keyword.arg == "business_context" for keyword in node.keywords)\n                        or any(isinstance(arg, ast.Name) and arg.id == "business_context" for arg in node.args))
                for node in ast.walk(analyze))
 
 
