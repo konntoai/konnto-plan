@@ -32,3 +32,11 @@ def test_untrusted_content_cannot_break_out_of_context_tags():
     )
     assert "&lt;/live_state&gt;" in packet
     assert "&lt;/retrieved_records&gt;" in packet
+
+
+def test_truncated_context_keeps_balanced_boundaries():
+    packet = build_analysis_context("x" * 10000, [{"n": 1, "type": "doc", "snippet": "y" * 5000}], max_chars=1200)
+    assert len(packet) <= 1200
+    assert packet.endswith("</retrieved_business_context>")
+    assert packet.count("<live_state>") == packet.count("</live_state>") == 1
+    assert packet.count("<retrieved_records>") == packet.count("</retrieved_records>") == 1
