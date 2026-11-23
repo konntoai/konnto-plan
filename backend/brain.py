@@ -23,7 +23,7 @@ DEFAULT_BRAIN = {
     "knowledge": "KONNTO AI is a business operating system with K-BRAIN intelligence and KONNTO PCM for authorised business coordination. The initial product focuses on in-app business intelligence, work, team coordination, approvals, documents and organisational knowledge. External integrations are not available unless explicitly configured and verified.",
     "faqs": [
         {"q": "Is KONNTO free?", "a": "KONNTO is free during launch. Partners like suppliers and contractors are always free."},
-        {"q": "Can external partners use WhatsApp?", "a": "WhatsApp integration is deferred and is not part of the current initial product capability."},
+        {"q": "Can I use WhatsApp?", "a": "WhatsApp availability depends on whether the business's WhatsApp integration is configured and verified. I will not claim it is connected unless the application confirms it."},
         {"q": "Who can see my data?", "a": "Only people in your business, and only what their job needs. Personal notes and one-to-one chats stay private."},
     ],
     "pricing_answers": "KONNTO is free during launch. Paid plans will come later; nobody is charged without agreeing first. Do not quote any prices.",
