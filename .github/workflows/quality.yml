@@ -5,6 +5,7 @@ on:
     branches:
       - konnto-v2-foundation
       - kbrain-workflow-v1
+      - phase0-reliability-audit
   pull_request:
     branches:
       - main
