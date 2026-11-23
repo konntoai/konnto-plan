@@ -39,3 +39,21 @@ def progress_update_document(status: str, updated_at: str, event: dict, *,
     if evidence_entry is not None:
         pushes["evidence"] = evidence_entry
     return {"$set": fields, "$push": pushes}
+
+
+def work_status_for_pcm(status: str):
+    """Map PCM progress into the shared Work status model."""
+    return {"in_progress": "in_progress", "blocked": "stuck", "completed": "done", "cancelled": "cancelled"}.get(status)
+
+
+def work_sync_intent(status: str, *, operation_id: str, due_at=None, reason=None) -> dict:
+    """Durable intent embedded in the same atomic write as PCM progress."""
+    return {
+        "operation_id": operation_id,
+        "status": "pending",
+        "work_status": work_status_for_pcm(status),
+        "due_at": due_at,
+        "reason": (reason or "")[:2000],
+        "created_at": None,
+        "attempts": 0,
+    }
