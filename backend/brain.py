@@ -356,10 +356,10 @@ async def spot_commitments(org: dict, sender_name: str, text: str, people_names:
     tz = org_tz(org)
     system = (f"Business '{org.get('name')}'. Today {now().astimezone(tz).strftime('%A %Y-%m-%d')}. Find only clear promises, tasks or decisions in this chat message from {sender_name}. "
               f"People: {', '.join(people_names)}. Use local ISO dates. Return empty list for small talk.")
-    chat = _chat(system, FAST).with_tools([SPOT_TOOL], tool_choice={"type": "function", "function": {"name": "record_commitments"}})
+    chat = _chat(system, MODEL).with_tools([SPOT_TOOL], tool_choice={"type": "function", "function": {"name": "record_commitments"}})
     try:
         r = await chat.send_message_with_tools(UserMessage(text=text[:2000]))
-        await log_usage(org["org_id"], "spot", FAST, r.usage)
+        await log_usage(org["org_id"], "spot", MODEL, r.usage)
         if r.tool_calls:
             return (r.tool_calls[0].arguments or {}).get("items", [])[:3]
     except Exception as e:
