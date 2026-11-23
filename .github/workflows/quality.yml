@@ -23,6 +23,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install test runner
+        run: python -m pip install pytest==9.2.0
       - name: Compile backend Python source
         run: python -m compileall -q backend
       - name: Run K-BRAIN workflow tests
