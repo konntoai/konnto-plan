@@ -10,6 +10,7 @@ from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso,
                   SENSITIVE_SCOPES, ai_limit_reached, audit, norm_phone, digits, org_tz, fact_scope_query, fact_category, can_read_rules)
 from channels import notify, add_notice, wa_send, wa_join_link, wa_configured
 import brain
+from kbrain_context import build_analysis_context
 
 logger = logging.getLogger("konnto.engine")
 
@@ -1151,7 +1152,18 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
     untrusted = (f"<untrusted_input source=\"attachments\">\n{extra_context[:3000]}\n</untrusted_input>" if extra_context else "")
     full_text = text + (f"\n\n{untrusted}" if untrusted else "")
-    analysis = await brain.analyze(org, member, full_text, people, open_items, approvals, rules, cfg, role)
+
+    # Evidence-first pipeline: retrieve authorised business context BEFORE the
+    # model classifies intent or proposes any action. The analysis model receives
+    # the same bounded evidence packet that will ground the final response.
+    sources = await retrieve(org, member, text, text, include_open=True)
+    live = await live_state(org, member)
+    business_context = build_analysis_context(live, sources)
+    analysis = await brain.analyze(
+        org, member, full_text, people, open_items, approvals, rules, cfg, role,
+        business_context=business_context,
+    )
+
     source = {"type": channel, "msg_id": user_msg["msg_id"]}
     cards, summaries = await execute_actions(org, member, analysis, people, source)
     for a in attachments:
@@ -1159,8 +1171,6 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
             cards.append({"card_id": new_id("crd"), "type": "doc", "status": "saved", "data": {"doc_id": a["doc_id"], "filename": a.get("filename"), "summary": a.get("summary", "")[:400]}})
     yield {"type": "cards", "cards": cards}
 
-    sources = await retrieve(org, member, analysis.get("search_query") or "", text, include_open=True)
-    live = await live_state(org, member)
     history = await _history(member)
     extra = (f"\nAttached content sent with this message:\n{untrusted}\n" if untrusted else "")
     extra += "\n\n" + brain.branch_context(analysis)
