@@ -205,14 +205,14 @@ async def cancel_instruction(instruction_id: str, ctx: dict = Depends(get_ctx)):
         raise HTTPException(403, "Only the issuer or owner can cancel this instruction.")
     if record["status"] in ("completed", "cancelled"):
         raise HTTPException(409, "This instruction is already closed.")
-    await db.pcm_instructions.update_one(
-        {"instruction_id": instruction_id, "org_id": org["org_id"]},
-        {"$set": {"status": "cancelled", "updated_at": iso()},
-         "$push": {"history": {"at": iso(), "actor_id": member["member_id"], "actor_name": member["name"], "event": "cancelled"}}},
+    updated_at = iso()
+    work_sync = work_sync_intent("cancelled", operation_id=new_id("pcmsync")) if record.get("item_id") else None
+    changed = await db.pcm_instructions.update_one(
+        progress_update_filter(instruction_id, org["org_id"], record),
+        {"$set": {"status": "cancelled", "updated_at": updated_at, **({"work_sync": work_sync} if work_sync else {})},
+         "$push": {"history": {"at": updated_at, "actor_id": member["member_id"], "actor_name": member["name"], "event": "cancelled"}}},
     )
-    if record.get("item_id"):
-        item = await db.items.find_one({"item_id": record["item_id"], "org_id": org["org_id"], "status": {"$nin": ["done", "cancelled"]}}, {"_id": 0})
-        if item:
-            await engine.set_item_status(org, member, item, "cancelled", via="pcm")
+    if not changed.matched_count:
+        raise HTTPException(409, "This instruction changed. Refresh and try again.")
     await audit(org["org_id"], member["member_id"], "pcm_instruction_cancelled", {"instruction_id": instruction_id})
     return {"ok": True}
