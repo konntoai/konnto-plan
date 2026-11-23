@@ -22,9 +22,9 @@ Do not deploy this branch or merge it to main until its tests and review pass.
 - Existing Work, Team, Approvals, Documents and Knowledge modules remain the source of truth for their records.
 
 ## Explicitly deferred
-KONNTO CENTRAL/global portfolio intelligence, WhatsApp delivery, email delivery,
-Tally, Zoho, banking integrations, global market intelligence and external
-marketplace functionality. Do not claim these are available.
+KONNTO CENTRAL/global portfolio intelligence, Tally, Zoho, banking integrations, global market intelligence and external
+marketplace functionality. WhatsApp and email must be treated as available only
+when their integration configuration and delivery status are verified. Do not claim these are available.
 
 ## Implementation principles
 1. Preserve working functionality; do not rebuild the application from scratch.
@@ -38,10 +38,9 @@ marketplace functionality. Do not claim these are available.
 8. Never report a feature as working without executing its tests.
 
 ## Known baseline findings to verify
-- Current prompt says PCM does not exist; this contradicts the target product.
-- Current analysis prompt also says there is no PCM.
-- Voice transcript may not be passed into K-BRAIN context.
-- Reminder/brief delivery may mark records before successful delivery.
+- The legacy prompt contained a contradictory no-PCM instruction; updated to reflect the PCM workspace.
+- Voice transcript context was fixed; verify with an end-to-end voice test.
+- Reminder delivery now waits for a confirmed channel; daily brief deduplication still needs retry-safe redesign.
 - Frontend SSE error event handling may leave a streaming response unresolved.
 - Cancelled voice recordings may still upload.
 - Pending-state consumption may consume unrelated next messages.
@@ -49,7 +48,7 @@ marketplace functionality. Do not claim these are available.
 - Export/deletion coverage requires a collection inventory.
 - Approval expense kind and duplicate action handling require correction.
 - Timezone handling differs between frontend and backend.
-- Inspect tests/.tmp/tok_priya for credential exposure; do not expose token contents.
+- A JWT-shaped test artifact was removed from the working tree; review git history and revoke the associated test credential if it remains valid.
 These are audit leads, not permission to assume a live production defect. Reproduce
 and verify each issue before changing behaviour.
 
