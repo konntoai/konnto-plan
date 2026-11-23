@@ -25,6 +25,8 @@ Branches are not separate agents, models, products or permission boundaries.
   Commitment detection now uses that same primary model rather than a separate
   fast-model choice.
 - Added unit tests for branch context construction and safe fallbacks.
+- Added a first K-Memory provenance safeguard: confirmed chat facts record who supplied them, when, their source type, evidence classification, visibility and verification status.
+- Made memory confirmation idempotent for exact duplicate active facts, and made retrieval expose provenance while preferring recently updated entries.
 
 ## Initial branches
 - `general`: ordinary conversation and explanations.
@@ -49,7 +51,8 @@ and planning.
 6. The message stores routing metadata for later evaluation.
 
 ## Important limitations
-- This is the first routing/workflow layer, not a completed K-Memory redesign.
+- This is the first routing/workflow and memory-provenance layer, not a completed K-Memory redesign. It does not yet perform semantic conflict detection, policy lifecycle/version approval, retention workflows or cross-source verification.
+- A `user_confirmed_fact` means the user confirmed that the entry should be stored; it is not independent verification of the underlying claim. Older records without metadata are labelled as legacy/unknown during retrieval.
 - Personal, Professional and CENTRAL are instruction profiles only. Their future
   product features, data models and integrations are not claimed to exist.
 - Branch selection does not grant access or authority. Existing backend permission
@@ -83,4 +86,5 @@ and completion claims.
 The branch includes focused unit tests for branch selection and structured
 reasoning-context construction. The GitHub connector has not returned a CI run
 for the latest commits; these tests and backend compilation still need to be run
-in the repository's normal CI or development environment.
+in the repository's normal CI or development environment. The new memory write
+and retrieval paths also require database-backed integration tests before pilot use.
