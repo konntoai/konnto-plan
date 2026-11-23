@@ -1,9 +1,39 @@
 import unittest
 
-from backend.pcm_policy import can_issue, can_view
+from backend.pcm_policy import (\n    can_issue, can_view, progress_update_filter, progress_update_document,\n)
 
 
 class PCMPolicyTests(unittest.TestCase):
+
+    def test_progress_filter_is_org_scoped_and_compare_and_set(self):
+        record = {"updated_at": "2026-11-23T10:00:00.000Z", "status": "in_progress"}
+        query = progress_update_filter("pcm_1", "org_1", record)
+        self.assertEqual(query["instruction_id"], "pcm_1")
+        self.assertEqual(query["org_id"], "org_1")
+        self.assertEqual(query["updated_at"], record["updated_at"])
+        self.assertEqual(query["status"], {"$nin": ["completed", "cancelled"]})
+        self.assertEqual(query["deleted"], {"$ne": True})
+
+    def test_progress_update_document_persists_status_history_and_evidence_together(self):
+        event = {"event": "completed", "note": "Verified"}
+        evidence = {"text": "Photo checked"}
+        update = progress_update_document(
+            "completed", "2026-11-23T10:05:00.000Z", event,
+            evidence_entry=evidence,
+        )
+        self.assertEqual(update["$set"]["status"], "completed")
+        self.assertEqual(update["$push"]["history"], event)
+        self.assertEqual(update["$push"]["evidence"], evidence)
+        self.assertNotIn("blocker", update["$set"])
+
+    def test_progress_update_document_clears_blocker_when_work_resumes(self):
+        update = progress_update_document(
+            "in_progress", "2026-11-23T10:05:00.000Z", {"event": "in_progress"},
+            due_at="2026-11-25T10:00:00.000Z",
+        )
+        self.assertIsNone(update["$set"]["blocker"])
+        self.assertEqual(update["$set"]["due_at"], "2026-11-25T10:00:00.000Z")
+
     def test_only_owner_or_team_work_can_issue(self):
         self.assertTrue(can_issue({"member_type": "owner", "access": []}))
         self.assertTrue(can_issue({"member_type": "team", "access": ["own_work", "team_work"]}))
