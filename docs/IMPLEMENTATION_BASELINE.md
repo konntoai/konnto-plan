@@ -1,5 +1,16 @@
 # KONNTO AI — implementation baseline
 
+## Long-term product direction
+KONNTO is intended to become a universal AI platform serving individuals, businesses,
+professionals and organisations. The shared foundation should support multiple
+permissioned experiences without splitting into independent products or duplicating
+the intelligence, memory, identity or execution layers.
+
+Initial production focus: complete KONNTO Business OS (K-BRAIN, Chat, PCM, K-Memory,
+authority controls and data-backed business intelligence). Personal and Professional
+experiences follow on the same foundation. KONNTO CENTRAL/global intelligence remains
+a later expansion and is not part of the initial release scope.
+
 This branch is the controlled upgrade path for the existing KONNTO application.
 Do not deploy this branch or merge it to main until its tests and review pass.
 
