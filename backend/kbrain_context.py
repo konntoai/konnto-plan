@@ -25,8 +25,16 @@ def build_analysis_context(
     middle = "\n</live_state>\n<retrieved_records>\n"
     closing = "\n</retrieved_records>\n</retrieved_business_context>"
     reserve = len(opening) + len(middle) + len(closing)
-    live_budget = max(0, min(len(live_state or ""), (limit - reserve) // 2))
-    live = escape((live_state or "Not available.").strip()[:live_budget])
+    raw_live = (live_state or "").strip()
+    if not raw_live:
+        raw_live = "Not available."
+    live_budget = max(0, min(len(raw_live), (limit - reserve) // 2))
+    live_was_truncated = len(raw_live) > live_budget
+    live_text = raw_live[:live_budget]
+    if live_was_truncated:
+        marker = " [Context truncated]"
+        live_text = live_text[:max(0, live_budget - len(marker))] + marker[:live_budget]
+    live = escape(live_text)
     prefix = opening + live + middle
     remaining = max(0, limit - len(prefix) - len(closing))
     rows = []
