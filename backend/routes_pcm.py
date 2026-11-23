@@ -185,7 +185,7 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
     if not changed.matched_count:
         raise HTTPException(409, "This instruction was closed or changed. Refresh and try again.")
     try:
-        await reconcile_pcm_work_sync(limit=20)
+        await reconcile_pcm_work_sync(limit=20, database=db)
     except Exception:
         logger.exception("Immediate PCM work sync failed; scheduled reconciliation will retry")
     # The durable work_sync intent is replayed by the PCM sync worker.
