@@ -296,7 +296,8 @@ async def dispatch_notification_job(job_id: str) -> dict:
     """Claim and deliver one job. Ambiguous external outcomes become uncertain, never auto-replayed."""
     stamp = iso()
     job = await db.notification_jobs.find_one_and_update(
-        {"_id": job_id, "status": {"$in": ["queued", "retry"]}},
+        {"_id": job_id, "status": {"$in": ["queued", "retry"]},
+         "$or": [{"next_attempt_at": None}, {"next_attempt_at": {"$lte": stamp}}, {"next_attempt_at": {"$exists": False}}]},
         {"$set": {"status": "sending", "claimed_at": stamp, "updated_at": stamp},
          "$inc": {"attempts": 1}},
     )
@@ -329,11 +330,16 @@ async def dispatch_notification_job(job_id: str) -> dict:
     except Exception as exc:
         # The call may have reached a provider before the exception surfaced.
         outcome, error = "uncertain", type(exc).__name__
-    next_status = "retry" if outcome == "failed" and job["channel"] == "in_app" else outcome
+    retryable = outcome == "failed" and bool(error) and str(error).startswith("http_") and int(job.get("attempts") or 0) < 5
+    next_status = "retry" if retryable else outcome
+    delay_seconds = min(3600, 60 * (2 ** max(0, int(job.get("attempts") or 1) - 1)))
+    fields = {"status": next_status, "outcome": outcome, "error": error,
+              "provider_ref": provider_ref, "finished_at": iso(), "updated_at": iso()}
+    if retryable:
+        fields["next_attempt_at"] = iso(now() + timedelta(seconds=delay_seconds))
     await db.notification_jobs.update_one(
         {"_id": job_id, "status": "sending"},
-        {"$set": {"status": next_status, "outcome": outcome, "error": error,
-                  "provider_ref": provider_ref, "finished_at": iso(), "updated_at": iso()}},
+        {"$set": fields},
     )
     return {"status": outcome, "error": error, "provider_ref": provider_ref, "job_id": job_id}
 
@@ -346,7 +352,10 @@ async def dispatch_notification_jobs(limit: int = 100) -> dict:
         {"$set": {"status": "uncertain", "outcome": "uncertain", "error": "delivery_outcome_unknown",
                   "updated_at": iso()}},
     )
-    rows = await db.notification_jobs.find({"status": {"$in": ["queued", "retry"]}}, {"_id": 1}).sort("created_at", 1).to_list(limit)
+    rows = await db.notification_jobs.find({"status": {"$in": ["queued", "retry"]},
+                                            "$or": [{"next_attempt_at": None}, {"next_attempt_at": {"$lte": iso()}},
+                                                    {"next_attempt_at": {"$exists": False}}]},
+                                           {"_id": 1}).sort("created_at", 1).to_list(limit)
     stats = {"sent": 0, "failed": 0, "uncertain": 0, "skipped": 0}
     for row in rows:
         result = await dispatch_notification_job(row["_id"])
