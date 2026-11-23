@@ -1,6 +1,6 @@
 import unittest
 
-from pcm_policy import can_issue, can_view
+from backend.pcm_policy import can_issue, can_view
 
 
 class PCMPolicyTests(unittest.TestCase):
