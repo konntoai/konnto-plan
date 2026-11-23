@@ -101,10 +101,12 @@ async def onboarding(body: OnboardIn, user: dict = Depends(current_user)):
             f"Welcome, {first}", ["KONNTO is ready. Tell it anything about your business — a task, a promise, a reminder or a question.",
                                   "Once KONNTO's WhatsApp is live for you, you can simply chat there too."], "Open KONNTO", app_link("/app/chat")))
     await audit(org["org_id"], member["member_id"], "org_created", {})
-    try:
-        await seed.seed_demo_org(org, member)
-    except Exception as e:
-        engine.logger.exception("demo seed failed: %s", e)
+    # Demo fixtures are opt-in. Real customer workspaces start clean by default.
+    if seed.demo_seed_enabled():
+        try:
+            await seed.seed_demo_org(org, member)
+        except Exception as e:
+            engine.logger.exception("demo seed failed: %s", e)
     return {"ok": True, "org_id": org["org_id"], "whatsapp_welcome": (rec or {}).get("status")}
 
 
