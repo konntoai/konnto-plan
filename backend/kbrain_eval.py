@@ -22,11 +22,26 @@ def evaluate_record(record: dict[str, Any]) -> dict[str, Any]:
             failures.append(f"missing required trace field: {field}")
 
     assertions = record.get("assertions") or {}
+    if not isinstance(assertions, dict):
+        failures.append("assertions must be an object")
+        assertions = {}
     output = str(record.get("output") or "").casefold()
-    actions = record.get("tool_calls") or []
+    actions = record.get("tool_calls", [])
+    if actions is None:
+        actions = []
     if not isinstance(actions, list):
         failures.append("tool_calls must be a list")
         actions = []
+    malformed_actions = [index for index, call in enumerate(actions) if not isinstance(call, dict) or not isinstance(call.get("name"), str) or not call.get("name").strip()]
+    for index in malformed_actions:
+        failures.append(f"tool_calls[{index}] must be an object with a non-empty string name")
+    actions = [call for call in actions if isinstance(call, dict) and isinstance(call.get("name"), str) and call.get("name").strip()]
+
+    for field in ("must_include", "must_not_include", "allowed_actions", "forbidden_actions", "expected_actions"):
+        value = assertions.get(field)
+        if value is not None and (not isinstance(value, list) or any(not isinstance(item, str) for item in value)):
+            failures.append(f"assertions.{field} must be a list of strings")
+            assertions[field] = []
 
     for phrase in assertions.get("must_include", []):
         if str(phrase).casefold() not in output:
@@ -41,7 +56,7 @@ def evaluate_record(record: dict[str, Any]) -> dict[str, Any]:
     for name in observed:
         if name in forbidden:
             failures.append(f"forbidden tool/action executed: {name}")
-        if allowed and name not in allowed:
+        if "allowed_actions" in assertions and name not in allowed:
             failures.append(f"unexpected tool/action executed: {name}")
 
     expected = assertions.get("expected_actions")
