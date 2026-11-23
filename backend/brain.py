@@ -11,11 +11,11 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, Te
 from core import db, now, iso, org_tz, log_usage, SCOPES, SAFE_SCOPES, fmt_local
 from kbrain_prompt_v2 import MASTER_PROMPT
 from kbrain_prompt import APP_OPERATING_NOTES
+from kbrain_workflow import ROUTER_INSTRUCTIONS, branch_context
 
 logger = logging.getLogger("konnto.brain")
 KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 MODEL = "claude-sonnet-4-6"
-FAST = "claude-haiku-4-5-20251001"
 
 DEFAULT_BRAIN = {
     "personality": "Practical, experienced business advisor. Warm but direct. Uses the business's own records, names and numbers.",
@@ -79,6 +79,18 @@ ANALYZE_TOOL = {"type": "function", "function": {
     "parameters": {"type": "object", "properties": {
         "language": {"type": "string", "description": "ISO 639-1 code of the language the person wrote in"},
         "intent": {"type": "string", "enum": ["tell", "ask", "do", "decide", "chat"]},
+        "branch": {"type": "string", "enum": ["general", "business", "personal", "professional", "central", "analyst", "communicator"]},
+        "subdomain": {"type": "string", "enum": ["sales", "marketing", "finance", "operations", "people", "technology", "leadership", "growth", "projects", "documents", "customer_service", "research", "planning", "other"]},
+        "response_mode": {"type": "string", "enum": ["direct", "explain", "plan", "analyse", "draft", "execute_or_draft", "clarify"]},
+        "reasoning_level": {"type": "string", "enum": ["quick", "standard", "deep"]},
+        "needs_clarification": {"type": "boolean"},
+        "objective": {"type": "string", "description": "The user's actual desired outcome, in one concise sentence."},
+        "constraints": {"type": "array", "items": {"type": "string"}, "description": "Explicit constraints, preferences, budget, deadline, scope or authority limits."},
+        "known_facts": {"type": "array", "items": {"type": "string"}, "description": "Relevant facts explicitly supplied or present in authorised context; do not include guesses."},
+        "unknowns": {"type": "array", "items": {"type": "string"}, "description": "Material missing information that affects confidence or execution."},
+        "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Prerequisites, people, approvals, records or external events needed."},
+        "risks": {"type": "array", "items": {"type": "string"}, "description": "Material risks, conflicts or failure modes to consider."},
+        "recommended_next_step": {"type": "string", "description": "The single most useful next step, or empty if none."},
         "items": {"type": "array", "description": "Tasks, promises, reminders, decisions or personal notes to OFFER for saving. Only real commitments.", "items": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["task", "promise", "reminder", "decision", "note"]},
             "title": {"type": "string", "description": "Short title in the person's language, max 80 chars"},
@@ -124,7 +136,7 @@ ANALYZE_TOOL = {"type": "function", "function": {
             "persona": {"type": "string", "enum": list(PERSONAS.keys()), "description": "set_persona: chief_of_staff, assistant (executive assistant), advisor (senior advisor / CEO mentor), operator (short and punchy)"},
         }, "required": ["type"]}},
         "search_query": {"type": "string", "description": "Keywords to look up in the business memory to answer, or empty"},
-    }, "required": ["language", "intent", "items", "actions"]}}}
+    }, "required": ["language", "intent", "branch", "subdomain", "response_mode", "reasoning_level", "needs_clarification", "objective", "constraints", "known_facts", "unknowns", "dependencies", "risks", "recommended_next_step", "items", "actions"]}}}
 
 
 def _people_block(people: list) -> str:
@@ -139,6 +151,7 @@ def analysis_system(org: dict, member: dict, people: list, open_items: list, app
     rules_txt = "\n".join(f"- {r['text']}" for r in rules[:30]) or "- none"
     access = ", ".join(sorted(set((member.get("access") or []) + ["own_work"]))) if member.get("member_type") != "owner" else "everything (owner)"
     return f"""You are the understanding step of K-BRAIN, the central intelligence of KONNTO AI, for the business "{org.get('name')}" ({org.get('industry') or 'industry unknown'}; {org.get('description') or ''}).
+{ROUTER_INSTRUCTIONS}
 Your only job here: read the speaker's message and record what it means and which actions K-BRAIN should DRAFT. Every action you record becomes a draft card the speaker must confirm; nothing executes on its own. The server re-checks every permission, so record what the speaker asked for even if they may lack access.
 Local time now: {local.strftime('%A %Y-%m-%d %H:%M')} ({tz.key}). Business currency: {org.get('currency') or 'USD'}.
 Speaker: {member['name']} (role: {role or member.get('member_type')}; job: {member.get('job') or '-'}). Speaker access: {access}.
@@ -188,10 +201,19 @@ async def analyze(org, member, text, people, open_items, approvals, rules, cfg, 
             a = r.tool_calls[0].arguments or {}
             a.setdefault("items", [])
             a.setdefault("actions", [])
+            a.setdefault("branch", "general")
+            a.setdefault("subdomain", "other")
+            a.setdefault("response_mode", "direct")
+            a.setdefault("reasoning_level", "standard")
+            a.setdefault("needs_clarification", False)
+            a.setdefault("objective", "")
+            for key in ("constraints", "known_facts", "unknowns", "dependencies", "risks"):
+                a.setdefault(key, [])
+            a.setdefault("recommended_next_step", "")
             return a
     except Exception as e:
         logger.error("analyze failed: %s", e)
-    return {"language": "en", "intent": "chat", "items": [], "actions": [], "search_query": text[:100], "failed": True}
+    return {"language": "en", "intent": "chat", "branch": "general", "subdomain": "other", "response_mode": "direct", "reasoning_level": "standard", "needs_clarification": False, "objective": "", "constraints": [], "known_facts": [], "unknowns": [], "dependencies": [], "risks": [], "recommended_next_step": "", "items": [], "actions": [], "search_query": text[:100], "failed": True}
 
 
 # ------------------------------------------------------------------ reply (streamed)
@@ -345,10 +367,10 @@ async def spot_commitments(org: dict, sender_name: str, text: str, people_names:
     tz = org_tz(org)
     system = (f"Business '{org.get('name')}'. Today {now().astimezone(tz).strftime('%A %Y-%m-%d')}. Find only clear promises, tasks or decisions in this chat message from {sender_name}. "
               f"People: {', '.join(people_names)}. Use local ISO dates. Return empty list for small talk.")
-    chat = _chat(system, FAST).with_tools([SPOT_TOOL], tool_choice={"type": "function", "function": {"name": "record_commitments"}})
+    chat = _chat(system, MODEL).with_tools([SPOT_TOOL], tool_choice={"type": "function", "function": {"name": "record_commitments"}})
     try:
         r = await chat.send_message_with_tools(UserMessage(text=text[:2000]))
-        await log_usage(org["org_id"], "spot", FAST, r.usage)
+        await log_usage(org["org_id"], "spot", MODEL, r.usage)
         if r.tool_calls:
             return (r.tool_calls[0].arguments or {}).get("items", [])[:3]
     except Exception as e:
