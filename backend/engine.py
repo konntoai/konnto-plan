@@ -14,6 +14,7 @@ import brain
 from kbrain_memory import build_user_confirmed_fact
 from kbrain_context import build_analysis_context
 from kbrain_retrieval import rank_sources
+from kbrain_diagnostics import build_operational_diagnostics
 
 logger = logging.getLogger("konnto.engine")
 
@@ -749,8 +750,10 @@ async def live_state(org: dict, member: dict) -> str:
     if roster:
         out.append("People: " + "; ".join(roster[:25]))
     # approvals
+    diagnostic_approvals = []
     if has_scope(member, "approve"):
         aps = await db.approvals.find({"org_id": org["org_id"], "status": "pending"}, {"_id": 0}).sort("created_at", 1).to_list(30)
+        diagnostic_approvals = aps
         total = sum(float(a.get("amount") or 0) for a in aps)
         if aps:
             out.append(f"Approvals waiting for {member['name'].split(' ')[0]} ({len(aps)}, {_short_money(total, ccy)} in money requests):")
@@ -762,11 +765,22 @@ async def live_state(org: dict, member: dict) -> str:
             out.append("Approvals waiting: none.")
     else:
         mine = await db.approvals.find({"org_id": org["org_id"], "requested_by": member["member_id"], "status": "pending"}, {"_id": 0}).to_list(10)
+        diagnostic_approvals = mine
         if mine:
             out.append("Your requests still waiting for the owner:")
             out += [f"- {a['title']} (waiting {_ago(a.get('created_at'))})" for a in mine]
     # work
     items = await visible_open_items(member, 80)
+    diagnostics = build_operational_diagnostics(items, diagnostic_approvals, reference_time=iso(ref))
+    dm = diagnostics["metrics"]
+    out.append(
+        "K-BRAIN operational indicators (based only on records visible to this user; "
+        "not a business-health score or full financial audit): "
+        f"{dm['open_work_items']} open work, {dm['overdue_work_items']} overdue, "
+        f"{dm['stuck_work_items']} stuck, {dm['due_within_24_hours']} due within 24h, "
+        f"{dm['pending_approvals']} visible pending approvals, "
+        f"{dm['pending_approvals_older_than_7_days']} older than 7 days."
+    )
     buckets = {"overdue": [], "due": [], "stuck": [], "delayed": [], "in_progress": [], "open": []}
     for i in items:
         st = item_state(i, ref)
