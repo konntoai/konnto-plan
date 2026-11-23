@@ -1132,7 +1132,7 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     live = await live_state(org, member)
     history = await _history(member)
     extra = (f"\nAttached content sent with this message:\n{untrusted}\n" if untrusted else "")
-    extra += "\\n\\n" + brain.branch_context(analysis)
+    extra += "\n\n" + brain.branch_context(analysis)
     if analysis.get("failed"):
         extra += "\n(Understanding step failed; answer helpfully and say nothing was drafted or saved.)"
     trusted = trusted_context(org, member, role)
