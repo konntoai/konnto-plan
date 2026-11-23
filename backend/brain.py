@@ -130,7 +130,7 @@ ANALYZE_TOOL = {"type": "function", "function": {
             "persona": {"type": "string", "enum": list(PERSONAS.keys()), "description": "set_persona: chief_of_staff, assistant (executive assistant), advisor (senior advisor / CEO mentor), operator (short and punchy)"},
         }, "required": ["type"]}},
         "search_query": {"type": "string", "description": "Keywords to look up in the business memory to answer, or empty"},
-    }, "required": ["language", "intent", "items", "actions"]}}}
+    }, "required": ["language", "intent", "branch", "subdomain", "response_mode", "reasoning_level", "needs_clarification", "items", "actions"]}}}
 
 
 def _people_block(people: list) -> str:
@@ -194,6 +194,11 @@ async def analyze(org, member, text, people, open_items, approvals, rules, cfg, 
             a = r.tool_calls[0].arguments or {}
             a.setdefault("items", [])
             a.setdefault("actions", [])
+            a.setdefault("branch", "general")
+            a.setdefault("subdomain", "other")
+            a.setdefault("response_mode", "direct")
+            a.setdefault("reasoning_level", "standard")
+            a.setdefault("needs_clarification", False)
             return a
     except Exception as e:
         logger.error("analyze failed: %s", e)
