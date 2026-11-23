@@ -67,7 +67,7 @@ function InstructionCard({ row, onProgress, onCancel, memberId }) {
           </div>
         </div>
       )}
-      <div className="text-[10px] text-muted-foreground">Updated {fmtWhen(row.updated_at)} · Linked to Work item {row.item_id}</div>
+      <div className="text-[10px] text-muted-foreground">Updated {fmtWhen(row.updated_at)} · Follow-up stage {row.followup_level || 0}/2 · Linked to Work item {row.item_id}</div>
     </article>
   );
 }
