@@ -5,6 +5,7 @@ not create a second task engine and do not grant authority to move money or bind
 the organisation.
 """
 from datetime import datetime
+import logging
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,9 @@ from pydantic import BaseModel, Field
 from core import db, iso, now, new_id, parse_iso, get_ctx, has_scope, is_owner, audit
 from channels import notify
 import engine
+from pcm_sync import reconcile_pcm_work_sync
+
+logger = logging.getLogger('konnto.pcm')
 from pcm_policy import can_issue as policy_can_issue, can_view as policy_can_view, progress_update_filter, progress_update_document, work_status_for_pcm, work_sync_intent
 router = APIRouter(prefix="/api/pcm")
 
@@ -126,6 +130,7 @@ async def create_instruction(body: InstructionIn, ctx: dict = Depends(get_ctx)):
     except Exception:
         await db.items.delete_one({"item_id": item["item_id"], "org_id": org["org_id"], "source.type": "pcm"})
         raise
+    await engine.deliver_task(org, member, target, item)
     await audit(org["org_id"], member["member_id"], "pcm_instruction_issued", {
         "instruction_id": record["instruction_id"], "item_id": item["item_id"], "assignee_id": target["member_id"]
     })
@@ -179,6 +184,10 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
     )
     if not changed.matched_count:
         raise HTTPException(409, "This instruction was closed or changed. Refresh and try again.")
+    try:
+        await reconcile_pcm_work_sync(limit=20)
+    except Exception:
+        logger.exception("Immediate PCM work sync failed; scheduled reconciliation will retry")
     # The durable work_sync intent is replayed by the PCM sync worker.
     if body.status == "blocked" or body.status == "completed":
         recipient_id = record["issued_by"] if member["member_id"] != record["issued_by"] else None
@@ -214,5 +223,9 @@ async def cancel_instruction(instruction_id: str, ctx: dict = Depends(get_ctx)):
     )
     if not changed.matched_count:
         raise HTTPException(409, "This instruction changed. Refresh and try again.")
+    try:
+        await reconcile_pcm_work_sync(limit=20)
+    except Exception:
+        logger.exception("Immediate PCM cancellation sync failed; scheduled reconciliation will retry")
     await audit(org["org_id"], member["member_id"], "pcm_instruction_cancelled", {"instruction_id": instruction_id})
     return {"ok": True}
