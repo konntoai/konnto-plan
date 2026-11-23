@@ -44,13 +44,15 @@ phases on the same shared foundation. KONNTO CENTRAL remains a later expansion.
 
 ## Verification status
 
-- GitHub branch and commit state were checked.
-- The branch is ahead of `main`; `main` has not been modified.
-- No local runtime, database or production-like environment was available in this
-  work session. Automated tests, Python compilation, frontend build, migrations,
-  and end-to-end flows have NOT been run after these changes.
-- The GitHub repository does not provide evidence in this work session that these
-  changes passed CI. Treat them as implemented but unverified.
+- Latest checked development commit: `c80498da2aada90dc9bf24bde782310441c960c6`.
+- GitHub Actions run for that commit completed successfully:
+  Python backend compilation and the isolated PCM policy unit tests both passed.
+- The policy tests caught a partner-role privilege issue on an earlier run; the
+  policy was corrected and the tests passed on subsequent runs.
+- This CI does NOT test the React build, database integration, authentication,
+  live notifications, cron execution, browser workflows or production deployment.
+- No production database, preview runtime or live customer environment was
+  modified or tested. No deployment or merge to `main` was performed.
 
 ## Remaining high-priority work
 
