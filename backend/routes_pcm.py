@@ -117,7 +117,7 @@ async def create_instruction(body: InstructionIn, ctx: dict = Depends(get_ctx)):
         "item_id": item["item_id"], "issued_by": member["member_id"],
         "issued_by_name": member["name"], "assignee_id": target["member_id"],
         "assignee_name": target["name"], "due_at": due,
-        "created_at": iso(), "updated_at": iso(), "history": [{
+        "created_at": iso(), "updated_at": iso(), "followup_level": 0, "last_followup_at": None, "history": [{
             "at": iso(), "actor_id": member["member_id"], "actor_name": member["name"],
             "event": "issued", "note": "Instruction issued through KONNTO PCM."
         }], "evidence": [], "deleted": False,
