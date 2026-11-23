@@ -329,8 +329,11 @@ async def dispatch_notification_job(job_id: str) -> dict:
             outcome, error = "failed", "unsupported_channel"
     except Exception as exc:
         # The call may have reached a provider before the exception surfaced.
-        outcome, error = "uncertain", type(exc).__name__
-    retryable = outcome == "failed" and bool(error) and str(error).startswith("http_") and int(job.get("attempts") or 0) < 5
+        outcome, error = ("failed" if job["channel"] == "in_app" else "uncertain"), type(exc).__name__
+    http_code = int(str(error).split("_", 1)[1]) if str(error).startswith("http_") and str(error).split("_", 1)[1].isdigit() else None
+    retryable = outcome == "failed" and int(job.get("attempts") or 0) < 5 and (
+        job["channel"] == "in_app" or http_code == 429 or (http_code is not None and http_code >= 500)
+    )
     next_status = "retry" if retryable else outcome
     delay_seconds = min(3600, 60 * (2 ** max(0, int(job.get("attempts") or 1) - 1)))
     fields = {"status": next_status, "outcome": outcome, "error": error,
