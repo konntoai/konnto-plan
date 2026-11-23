@@ -58,3 +58,29 @@ and planning.
 - No production deployment, live customer test or full end-to-end model evaluation
   has been performed.
 - Run backend tests and regression checks before preview/pilot deployment.
+
+
+## Intelligent reasoning workflow (expanded)
+The structured understanding stage also records the objective, constraints, known
+facts, unknowns, dependencies, risks and recommended next step. These are model
+generated hints, not trusted records. The reply stage is instructed to validate
+them against the original message and trusted server context.
+
+The reply stage follows a common operating protocol:
+1. Understand the outcome and intent.
+2. Contextualise using authorised live records and relevant memory.
+3. Plan dependencies and decision points for multi-step work.
+4. Check user authority and available tools.
+5. Act only through real tools, or create drafts where confirmation is required.
+6. Verify tool results before claiming completion.
+7. Respond with relevant evidence, uncertainty and next step.
+
+The protocol explicitly separates recommendations from approvals and drafts from
+sent messages. It also prohibits fabricated metrics, permissions, integrations
+and completion claims.
+
+## Verification status
+The branch includes focused unit tests for branch selection and structured
+reasoning-context construction. The GitHub connector has not returned a CI run
+for the latest commits; these tests and backend compilation still need to be run
+in the repository's normal CI or development environment.
