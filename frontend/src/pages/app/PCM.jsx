@@ -121,11 +121,10 @@ export default function PCMPage() {
 
   const rows = useMemo(() => (data?.instructions || []).filter(x => filter === "all" || (filter === "open" ? !["completed", "cancelled"].includes(x.status) : x.status === filter)), [data, filter]);
   const counts = data?.counts || {};
-  const myMember = me?.member || {};
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6" data-testid="pcm-page">
-      <PageHeader title="KONNTO PCM" description="Business coordination, instruction ownership and evidence-backed follow-through." />
+      <PageHeader title="KONNTO PCM" subtitle="Business coordination, instruction ownership and evidence-backed follow-through." />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 text-primary" /> Owner authority stays protected. PCM records progress; it does not move money or sign commitments.</div>
         <div className="flex gap-2">
@@ -160,7 +159,7 @@ export default function PCMPage() {
       </div>
       {loading ? <div className="rounded-2xl surface p-8 text-center text-sm text-muted-foreground">Loading PCM register…</div> :
         rows.length ? <div className="grid gap-3">{rows.map(row => <InstructionCard key={row.instruction_id} row={row} onProgress={progress} onCancel={cancel} memberId={memberId} />)}</div> :
-        <EmptyState title="No instructions here yet" description="Issue a clear instruction to a responsible person, or check another filter." />}
+        <EmptyState title="No instructions here yet" body="Issue a clear instruction to a responsible person, or check another filter." />}
     </div>
   );
 }
