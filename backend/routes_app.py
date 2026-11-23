@@ -17,6 +17,7 @@ from channels import notify, add_notice, wa_send, wa_configured, send_email, ema
 from storage import put_object, get_object, extract_text, ext_of, DOC_TYPES, IMAGE_TYPES, AUDIO_TYPES, MAX_BYTES, APP_NAME
 import brain
 from kbrain_memory import build_user_confirmed_fact, build_fact_correction_metadata
+from kbrain_action_policy import button_claim_query, button_claim_update, button_completion_update
 import engine
 import seed
 
@@ -373,16 +374,39 @@ async def _chat_pair(org: dict, member: dict, user_text: str, reply: str, kind: 
 @router.post("/chat/actions")
 async def chat_action(body: ActionIn, ctx: dict = Depends(get_ctx)):
     org, m = ctx["org"], ctx["member"]
+    claimed = False
     if body.msg_id:
-        src = await db.brain_messages.find_one({"msg_id": body.msg_id, "member_id": m["member_id"]}, {"_id": 0, "buttons": 1, "buttons_used": 1})
-        if not src or not any(b.get("id") == body.action_id for b in (src.get("buttons") or [])):
-            raise HTTPException(404, "That button is no longer available")
-        if src.get("buttons_used"):
-            raise HTTPException(409, "You already answered this one")
-    text = await engine.handle_button(org, m, body.action_id, via="app")
-    if body.msg_id:
-        await db.brain_messages.update_one({"msg_id": body.msg_id, "member_id": m["member_id"]},
-                                           {"$set": {"buttons_used": body.action_id, "buttons_used_label": body.label, "buttons_used_at": iso()}})
+        # Claim the button before executing it. The old read-then-write sequence
+        # allowed two concurrent taps to pass the check and execute the same action.
+        claim = await db.brain_messages.update_one(
+            button_claim_query(body.msg_id, m["member_id"], body.action_id),
+            button_claim_update(body.action_id, body.label, iso()),
+        )
+        if not getattr(claim, "modified_count", 0):
+            src = await db.brain_messages.find_one(
+                {"msg_id": body.msg_id, "member_id": m["member_id"]},
+                {"_id": 0, "buttons": 1, "buttons_used": 1, "button_action_status": 1},
+            )
+            if not src or not any(b.get("id") == body.action_id for b in (src.get("buttons") or [])):
+                raise HTTPException(404, "That button is no longer available")
+            raise HTTPException(409, "This action has already been claimed or completed")
+        claimed = True
+    try:
+        text = await engine.handle_button(org, m, body.action_id, via="app")
+        if claimed:
+            await db.brain_messages.update_one(
+                {"msg_id": body.msg_id, "member_id": m["member_id"], "buttons_used": body.action_id},
+                button_completion_update(text, iso()),
+            )
+    except Exception:
+        # Keep the claim. Releasing it here would permit a retry to repeat a
+        # side effect that may already have succeeded before the exception.
+        if claimed:
+            await db.brain_messages.update_one(
+                {"msg_id": body.msg_id, "member_id": m["member_id"], "buttons_used": body.action_id},
+                {"$set": {"button_action_status": "needs_review", "button_action_error_at": iso()}},
+            )
+        raise
     u, a = await _chat_pair(org, m, body.label or body.action_id.split(":")[0], text, kind="button")
     return {"text": text, "user_message": u, "message": a}
 
