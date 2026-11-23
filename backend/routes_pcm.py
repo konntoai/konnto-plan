@@ -173,8 +173,10 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
             if body.status in mapped:
                 await engine.set_item_status(org, member, item, mapped[body.status], body.note, via="pcm")
     if body.status == "blocked" or body.status == "completed":
-        recipient_id = record["issued_by"] if member["member_id"] != record["issued_by"] else org.get("owner_member_id")
+        recipient_id = record["issued_by"] if member["member_id"] != record["issued_by"] else None
         recipient = await db.members.find_one({"member_id": recipient_id, "org_id": org["org_id"], "status": "active"}, {"_id": 0}) if recipient_id else None
+        if not recipient and member["member_id"] == record["issued_by"]:
+            recipient = await db.members.find_one({"org_id": org["org_id"], "member_type": "owner", "status": "active"}, {"_id": 0})
         if recipient and recipient["member_id"] != member["member_id"]:
             label = "blocked" if body.status == "blocked" else "completed"
             await notify(recipient, org=org, kind="pcm_update",
