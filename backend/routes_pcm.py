@@ -205,7 +205,8 @@ async def cancel_instruction(instruction_id: str, ctx: dict = Depends(get_ctx)):
          "$push": {"history": {"at": iso(), "actor_id": member["member_id"], "actor_name": member["name"], "event": "cancelled"}}},
     )
     if record.get("item_id"):
-        await db.items.update_one({"item_id": record["item_id"], "org_id": org["org_id"], "status": {"$nin": ["done", "cancelled"]}},
-                                  {"$set": {"status": "cancelled", "updated_at": iso()}})
+        item = await db.items.find_one({"item_id": record["item_id"], "org_id": org["org_id"], "status": {"$nin": ["done", "cancelled"]}}, {"_id": 0})
+        if item:
+            await engine.set_item_status(org, member, item, "cancelled", via="pcm")
     await audit(org["org_id"], member["member_id"], "pcm_instruction_cancelled", {"instruction_id": instruction_id})
     return {"ok": True}
