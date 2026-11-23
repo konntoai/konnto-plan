@@ -27,15 +27,20 @@ class FakeInstructions:
         intent = self.row["work_sync"]
         if query["work_sync.operation_id"] != intent["operation_id"]:
             return None
-        self.row["work_sync"].update(update["$set"])
+        for key, value in update["$set"].items():
+            if key.startswith("work_sync."):
+                self.row["work_sync"][key.split(".", 1)[1]] = value
         self.row["work_sync"]["attempts"] += update["$inc"]["work_sync.attempts"]
         return dict(self.row)
 
     async def update_one(self, query, update):
         assert query["work_sync.operation_id"] == self.row["work_sync"]["operation_id"]
-        self.row["work_sync"].update(update.get("$set", {}))
+        for key, value in update.get("$set", {}).items():
+            if key.startswith("work_sync."):
+                self.row["work_sync"][key.split(".", 1)[1]] = value
         for key in update.get("$unset", {}):
-            self.row["work_sync"].pop(key, None)
+            if key.startswith("work_sync."):
+                self.row["work_sync"].pop(key.split(".", 1)[1], None)
         return type("Result", (), {"matched_count": 1})()
 
 
