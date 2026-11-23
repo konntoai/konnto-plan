@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, MessageSquareText, CheckSquare, Users, ShieldCheck, Menu, LogOut, Settings, BookOpen, FileText, LifeBuoy, Lock, LayoutDashboard, Sparkles } from "lucide-react";
+import { Home, MessageSquareText, CheckSquare, Users, ShieldCheck, ClipboardList, Menu, LogOut, Settings, BookOpen, FileText, LifeBuoy, Lock, LayoutDashboard, Sparkles } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Logo, PersonAvatar, FullPageLoader, KonntoOrb } from "@/components/common";
@@ -20,6 +20,7 @@ const PRIMARY = [
 ];
 
 const SECONDARY = [
+  { to: "/app/pcm", label: "PCM", icon: ClipboardList, testid: "nav-pcm" },
   { to: "/app/documents", label: "Documents", icon: FileText, testid: "nav-documents" },
   { to: "/app/knowledge", label: "Business brain", icon: BookOpen, testid: "nav-knowledge" },
   { to: "/app/settings", label: "Settings", icon: Settings, testid: "nav-settings" },
@@ -31,6 +32,7 @@ const TITLES = {
   "/app/chat": "Chat with K-BRAIN",
   "/app/dashboard": "Today",
   "/app/work": "Work",
+  "/app/pcm": "KONNTO PCM",
   "/app/team": "Team",
   "/app/approvals": "Approvals",
   "/app/documents": "Documents",
