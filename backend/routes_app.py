@@ -16,6 +16,7 @@ from core import (db, now, iso, parse_iso, new_id, current_user, get_ctx, has_sc
 from channels import notify, add_notice, wa_send, wa_configured, send_email, email_html
 from storage import put_object, get_object, extract_text, ext_of, DOC_TYPES, IMAGE_TYPES, AUDIO_TYPES, MAX_BYTES, APP_NAME
 import brain
+from kbrain_memory import build_user_confirmed_fact
 import engine
 import seed
 
@@ -763,9 +764,23 @@ async def add_fact(body: FactIn, ctx: dict = Depends(get_ctx)):
         raise HTTPException(400, "Write something to remember")
     if ctx["member"].get("member_type") == "partner":
         raise HTTPException(403, "External users can't add to company memory")
-    f = {"fact_id": new_id("fct"), "org_id": ctx["org"]["org_id"], "text": body.text.strip()[:400], "source": "manual", "confirmed": True,
-         "category": fact_category(body.text),
-         "created_by": ctx["member"]["member_id"], "created_by_name": ctx["member"]["name"], "created_at": iso()}
+    org_id = ctx["org"]["org_id"]
+    fact_text = body.text.strip()[:400]
+    existing = await db.knowledge.find_one(
+        {"org_id": org_id, "text": fact_text, "deleted": {"$ne": True}},
+        {"_id": 0},
+    )
+    if existing:
+        return existing
+    f = build_user_confirmed_fact(
+        fact_id=new_id("fct"),
+        org_id=org_id,
+        text=fact_text,
+        category=fact_category(fact_text),
+        member=ctx["member"],
+        source="manual",
+        created_at=iso(),
+    )
     await db.knowledge.insert_one(dict(f))
     return f
 
