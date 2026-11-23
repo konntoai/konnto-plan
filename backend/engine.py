@@ -3,6 +3,7 @@ import re
 import math
 import logging
 from datetime import timedelta
+from html import escape
 from typing import Optional, AsyncGenerator
 
 from core import (db, now, iso, parse_iso, new_id, short_code, local_to_utc_iso, fmt_local, app_link,
@@ -901,6 +902,7 @@ async def execute_actions(org: dict, member: dict, analysis: dict, people: list,
             summaries.append(f"Did not draft '{data['title']}' again — an open item with this title already exists")
             continue
         cards.append({"card_id": new_id("crd"), "type": "proposal", "status": "pending", "data": data})
+        existing_titles.add(data["title"].strip().lower())
         summaries.append(f"DRAFTED (not saved — waits for the user to tap Save) a {data['kind']}: {data['title']}" + (f" for {data['assignee_name']}" if data.get('assignee_name') else ""))
 
     for a in (analysis.get("actions") or [])[:6]:
@@ -1150,7 +1152,7 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     open_items = await visible_open_items(member, 40)
     approvals = await pending_approvals_for(member)
     rules = await active_rules(org["org_id"]) if can_read_rules(member) else []
-    untrusted = (f"<untrusted_input source=\"attachments\">\n{extra_context[:3000]}\n</untrusted_input>" if extra_context else "")
+    untrusted = (f"<untrusted_input source=\"attachments\">\n{escape(extra_context[:3000])}\n</untrusted_input>" if extra_context else "")
     full_text = text + (f"\n\n{untrusted}" if untrusted else "")
 
     # Evidence-first pipeline: retrieve authorised business context BEFORE the
