@@ -796,10 +796,17 @@ async def live_state(org: dict, member: dict) -> str:
             exp = f" (until {fmt_local(r['expires_at'], org)})" if r.get("expires_at") else ""
             out.append(f"- {r['text']}{exp}")
     # business facts (cash, suppliers, policies)
-    facts = await db.knowledge.find(fact_scope_query(member), {"_id": 0}).sort("created_at", -1).to_list(25)
+    facts = await db.knowledge.find(fact_scope_query(member), {"_id": 0}).sort([("updated_at", -1), ("created_at", -1)]).to_list(25)
     if facts:
-        out.append("K-MEMORY confirmed business facts (newest first; flag conflicts):")
-        out += [f"- [{f.get('category') or fact_category(f['text'])}] {f['text'][:220]} (added {fmt_local(f.get('created_at'), org)} by {f.get('created_by_name') or '-'})" for f in facts]
+        out.append("K-MEMORY user-supplied business memory (newest first; user confirmation is not independent verification; flag conflicts):")
+        out += [
+            f"- [{f.get('category') or fact_category(f['text'])}] {f['text'][:220]} "
+            f"(verification: {f.get('verification_status') or 'legacy_status_unknown'}; "
+            f"evidence: {f.get('evidence_type') or 'legacy_unclassified'}; "
+            f"source: {f.get('source') or 'unspecified'}; "
+            f"added {fmt_local(f.get('created_at'), org)} by {f.get('created_by_name') or '-'})"
+            for f in facts
+        ]
     # projects
     projects = await db.projects.find({"org_id": org["org_id"], "status": {"$ne": "archived"}}, {"_id": 0}).to_list(30)
     pj_lines = []
