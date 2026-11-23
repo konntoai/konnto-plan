@@ -64,7 +64,8 @@ INDEXES: dict = {
     "projects": [IndexModel([("project_id", ASCENDING)], name="project_id", unique=True), IndexModel([("org_id", ASCENDING)], name="org")],
     "pcm_instructions": [IndexModel([("instruction_id", ASCENDING)], name="instruction_id", unique=True),
                          IndexModel([("org_id", ASCENDING), ("status", ASCENDING), ("updated_at", DESCENDING)], name="org_status_updated"),
-                         IndexModel([("org_id", ASCENDING), ("assignee_id", ASCENDING), ("status", ASCENDING)], name="org_assignee_status")],
+                         IndexModel([("org_id", ASCENDING), ("assignee_id", ASCENDING), ("status", ASCENDING)], name="org_assignee_status"),
+                         IndexModel([("status", ASCENDING), ("due_at", ASCENDING), ("followup_level", ASCENDING)], name="pcm_due_followup")],
 }
 
 
