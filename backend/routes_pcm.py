@@ -171,6 +171,10 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
     if record.get("item_id"):
         item = await db.items.find_one({"item_id": record["item_id"], "org_id": org["org_id"]}, {"_id": 0})
         if item:
+            if body.new_due_at:
+                await db.items.update_one({"item_id": record["item_id"], "org_id": org["org_id"]},
+                                          {"$set": {"due_at": due, "updated_at": iso()}})
+                item["due_at"] = due
             mapped = {"in_progress": "in_progress", "blocked": "stuck", "completed": "done"}
             if body.status in mapped:
                 await engine.set_item_status(org, member, item, mapped[body.status], body.note, via="pcm")
