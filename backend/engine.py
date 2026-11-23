@@ -1132,6 +1132,7 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     live = await live_state(org, member)
     history = await _history(member)
     extra = (f"\nAttached content sent with this message:\n{untrusted}\n" if untrusted else "")
+    extra += "\\n\\n" + brain.branch_context(analysis)
     if analysis.get("failed"):
         extra += "\n(Understanding step failed; answer helpfully and say nothing was drafted or saved.)"
     trusted = trusted_context(org, member, role)
@@ -1142,6 +1143,8 @@ async def run_brain(org: dict, member: dict, text: str, *, channel: str = "app",
     reply = "".join(out).strip()
     msg = {"msg_id": new_id("bm"), "org_id": org["org_id"], "member_id": member["member_id"], "role": "assistant", "kind": "message",
            "text": reply, "cards": cards, "citations": _citations(reply, sources), "language": analysis.get("language"),
+           "brain_branch": analysis.get("branch", "general"), "brain_subdomain": analysis.get("subdomain", "other"),
+           "brain_response_mode": analysis.get("response_mode", "direct"), "brain_reasoning_level": analysis.get("reasoning_level", "standard"),
            "channel": channel, "reply_to": user_msg["msg_id"], "created_at": iso()}
     await db.brain_messages.insert_one(dict(msg))
     msg.pop("_id", None)
