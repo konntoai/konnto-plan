@@ -37,7 +37,7 @@ async def reconcile_pcm_work_sync(limit: int = 100, database=None) -> dict:
         op_id = intent.get("operation_id")
         if not op_id:
             continue
-        claim = await db.pcm_instructions.find_one_and_update({
+        claim = await database.pcm_instructions.find_one_and_update({
             "instruction_id": row["instruction_id"],
             "org_id": row["org_id"],
             "work_sync.operation_id": op_id,
@@ -56,7 +56,7 @@ async def reconcile_pcm_work_sync(limit: int = 100, database=None) -> dict:
             item_id = claim.get("item_id")
             if not item_id:
                 stats["missing_items"] += 1
-                await db.pcm_instructions.update_one(
+                await database.pcm_instructions.update_one(
                     {"instruction_id": claim["instruction_id"], "org_id": claim["org_id"], "work_sync.operation_id": op_id},
                     {"$set": {"work_sync.status": "failed", "work_sync.last_error": "PCM instruction has no linked work item"},
                      "$unset": {"work_sync.claimed_at": ""}},
@@ -90,13 +90,13 @@ async def reconcile_pcm_work_sync(limit: int = 100, database=None) -> dict:
                 )
                 if not existing:
                     stats["missing_items"] += 1
-                    await db.pcm_instructions.update_one(
+                    await database.pcm_instructions.update_one(
                         {"instruction_id": claim["instruction_id"], "org_id": claim["org_id"], "work_sync.operation_id": op_id},
                         {"$set": {"work_sync.status": "failed", "work_sync.last_error": "Linked work item not found"},
                          "$unset": {"work_sync.claimed_at": ""}},
                     )
                     continue
-            await db.pcm_instructions.update_one(
+            await database.pcm_instructions.update_one(
                 {"instruction_id": claim["instruction_id"], "org_id": claim["org_id"], "work_sync.operation_id": op_id},
                 {"$set": {"work_sync.status": "done", "work_sync.completed_at": iso()},
                  "$unset": {"work_sync.claimed_at": "", "work_sync.last_error": ""}},
@@ -104,7 +104,7 @@ async def reconcile_pcm_work_sync(limit: int = 100, database=None) -> dict:
             stats["synced"] += 1
         except Exception as exc:
             stats["errors"] += 1
-            await db.pcm_instructions.update_one(
+            await database.pcm_instructions.update_one(
                 {"instruction_id": claim["instruction_id"], "org_id": claim["org_id"], "work_sync.operation_id": op_id},
                 {"$set": {"work_sync.status": "pending", "work_sync.last_error": str(exc)[:300]},
                  "$unset": {"work_sync.claimed_at": ""}},
