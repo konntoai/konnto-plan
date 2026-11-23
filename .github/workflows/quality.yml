@@ -3,6 +3,8 @@ name: KONNTO safe quality checks
 on:
   push:
     branches:
+      - main
+      - phase1-action-outbox
       - konnto-v2-foundation
       - kbrain-workflow-v1
       - phase0-reliability-audit
