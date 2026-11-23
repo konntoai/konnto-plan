@@ -1,8 +1,19 @@
 """Durable, idempotent synchronization from PCM instructions to shared Work items."""
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
-from core import db, iso, now
 from pcm_policy import work_status_for_pcm
+
+# Keep this worker importable in isolated tests without loading application settings.
+db = None
+
+def now():
+    return datetime.now(timezone.utc)
+
+def iso(value=None):
+    value = value or now()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
 
 
 async def reconcile_pcm_work_sync(limit: int = 100) -> dict:
