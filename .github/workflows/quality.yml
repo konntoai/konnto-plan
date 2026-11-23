@@ -31,7 +31,7 @@ jobs:
       - name: Run K-BRAIN workflow tests
         working-directory: backend
         run: python -m pytest -q test_kbrain_workflow.py
-      - name: Run isolated PCM policy tests
+      - name: Run isolated backend unit tests
         env:
           PYTHONPATH: .
-        run: python -m unittest discover -s tests/unit -p "test_*.py" -v
+        run: python -m pytest -q tests/unit
