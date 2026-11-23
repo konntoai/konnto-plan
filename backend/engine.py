@@ -1223,7 +1223,7 @@ async def save_proposal(org: dict, member: dict, data: dict, source: dict) -> di
 
 
 async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Optional[dict] = None) -> dict:
-    msg = await db.brain_messages.find_one({"member_id": member["member_id"], "cards.card_id": card_id}, {"_id": 0})
+    msg = await db.brain_messages.find_one({"org_id": org["org_id"], "member_id": member["member_id"], "cards.card_id": card_id}, {"_id": 0})
     if not msg:
         return {"error": "not_found"}
     card = next(c for c in msg["cards"] if c["card_id"] == card_id)
@@ -1304,7 +1304,7 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             await db.items.update_one({"item_id": card["data"]["item_id"], "org_id": org["org_id"]}, {"$set": {**prev, "updated_at": iso()},
                                        "$push": {"history": _hist(member["name"], "Undid last change")}})
             card["status"] = "undone"
-    await db.brain_messages.update_one({"msg_id": msg["msg_id"]}, {"$set": {"cards": msg["cards"]}})
+    await db.brain_messages.update_one({"msg_id": msg["msg_id"], "org_id": org["org_id"], "member_id": member["member_id"]}, {"$set": {"cards": msg["cards"]}})
     return {"card": card, **result}
 
 
