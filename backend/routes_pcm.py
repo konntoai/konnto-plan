@@ -135,6 +135,8 @@ async def update_progress(instruction_id: str, body: ProgressIn, ctx: dict = Dep
     record = await _get_instruction(member, instruction_id)
     if member["member_id"] not in (record["assignee_id"], record["issued_by"]) and not is_owner(member):
         raise HTTPException(403, "Only the assignee, issuer or owner can update this instruction.")
+    if record.get("status") in ("completed", "cancelled"):
+        raise HTTPException(409, "This instruction is closed and cannot be changed.")
     if body.status not in ("acknowledged", "in_progress", "blocked", "completed"):
         raise HTTPException(400, "Unsupported progress state.")
     if body.status == "blocked" and not (body.note or "").strip():
