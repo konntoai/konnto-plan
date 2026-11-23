@@ -26,7 +26,7 @@ def progress_update_filter(instruction_id: str, org_id: str, record: dict) -> di
 
 
 def progress_update_document(status: str, updated_at: str, event: dict, *,
-                             blocker=None, due_at=None, evidence_entry=None) -> dict:
+                             blocker=None, due_at=None, evidence_entry=None, work_sync=None) -> dict:
     """Build one atomic Mongo update for PCM status, history, and evidence."""
     fields = {"status": status, "updated_at": updated_at}
     if status == "blocked":
@@ -38,6 +38,8 @@ def progress_update_document(status: str, updated_at: str, event: dict, *,
     pushes = {"history": event}
     if evidence_entry is not None:
         pushes["evidence"] = evidence_entry
+    if work_sync is not None:
+        fields["work_sync"] = work_sync
     return {"$set": fields, "$push": pushes}
 
 
