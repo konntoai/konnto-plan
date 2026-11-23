@@ -32,4 +32,15 @@ def build_user_confirmed_fact(
         "created_at": created_at,
         "updated_at": created_at,
         "version": 1,
+        "lifecycle_status": "active",
+        "supersedes_fact_id": None,
+    }
+
+
+def build_fact_correction_metadata(previous: dict, *, corrected_at: str, corrected_by: dict) -> dict:
+    """Metadata to close a prior fact after its replacement has been safely inserted."""
+    return {
+        "lifecycle_status": "superseded",
+        "superseded_at": corrected_at,
+        "superseded_by": corrected_by["member_id"],
     }
