@@ -167,7 +167,14 @@ async def ensure_project(org_id: str, name: Optional[str], actor: dict) -> Optio
     return pid
 
 
-async def create_item(org: dict, actor: dict, data: dict, source: Optional[dict] = None, notify_assignee: bool = True) -> dict:
+async def create_item(org: dict, actor: dict, data: dict, source: Optional[dict] = None, notify_assignee: bool = True,
+                      idempotency_key: Optional[str] = None) -> dict:
+    # Deterministic Mongo _id makes retries of a confirmed proposal converge on
+    # one Work item even if the request crashes before its chat card is updated.
+    if idempotency_key:
+        existing = await db.items.find_one({"_id": idempotency_key, "org_id": org["org_id"]}, {"_id": 0})
+        if existing:
+            return existing
     people = await org_people(org["org_id"])
     assignee = None
     if data.get("assignee_id"):
@@ -200,8 +207,19 @@ async def create_item(org: dict, actor: dict, data: dict, source: Optional[dict]
         "history": [_hist(actor["name"], f"Created{' for ' + assignee['name'] if assignee and assignee['member_id'] != actor['member_id'] else ''}")],
         "created_at": iso(), "updated_at": iso(), "done_at": None,
     }
-    await db.items.insert_one(dict(item))
-    item.pop("_id", None)
+    stored_item = dict(item)
+    if idempotency_key:
+        stored_item["_id"] = idempotency_key
+        stored_item["idempotency_key"] = idempotency_key
+    try:
+        await db.items.insert_one(stored_item)
+    except Exception as exc:
+        if not idempotency_key or getattr(exc, "code", None) != 11000:
+            raise
+        existing = await db.items.find_one({"_id": idempotency_key, "org_id": org["org_id"]}, {"_id": 0})
+        if not existing:
+            raise
+        return existing
     await audit(org["org_id"], actor["member_id"], "item_created", {"item_id": item["item_id"], "title": item["title"]})
     if notify_assignee and assignee and assignee["member_id"] != actor["member_id"] and kind in ("task", "promise", "reminder"):
         await deliver_task(org, actor, assignee, item)
@@ -1219,7 +1237,9 @@ async def save_proposal(org: dict, member: dict, data: dict, source: dict) -> di
     payload["remind_at_utc"] = data.get("remind_at")
     payload.pop("due_at", None)
     payload.pop("remind_at", None)
-    return await create_item(org, member, payload, source=source)
+    card_id = source.get("card_id")
+    key = f"proposal:{org['org_id']}:{card_id}" if card_id else None
+    return await create_item(org, member, payload, source=source, idempotency_key=key)
 
 
 async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Optional[dict] = None) -> dict:
@@ -1234,7 +1254,7 @@ async def card_action(org: dict, member: dict, card_id: str, op: str, edits: Opt
             if edits and edits.get("assignee_id"):
                 p = await db.members.find_one({"member_id": edits["assignee_id"], "org_id": org["org_id"]}, {"_id": 0})
                 data["assignee_name"] = p["name"] if p else None
-            item = await save_proposal(org, member, data, {"type": "chat", "msg_id": msg["msg_id"]})
+            item = await save_proposal(org, member, data, {"type": "chat", "msg_id": msg["msg_id"], "card_id": card_id})
             card["data"] = data
             card["status"], card["item_id"] = "saved", item["item_id"]
             result = {"item": item}
