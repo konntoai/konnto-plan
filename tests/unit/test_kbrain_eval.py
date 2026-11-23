@@ -50,3 +50,24 @@ def test_eval_file_reports_malformed_rows(tmp_path):
     assert report["total"] == 2
     assert report["passed"] == 1
     assert report["failed"] == 1
+
+
+def test_eval_enforces_explicitly_empty_allowlist():
+    result = evaluate_record(trace(
+        tool_calls=[{"name": "send_message"}],
+        assertions={"allowed_actions": [], "expected_actions": []},
+    ))
+    assert result["passed"] is False
+    assert any("unexpected tool/action" in failure for failure in result["failures"])
+
+
+def test_eval_rejects_malformed_tool_call_records():
+    result = evaluate_record(trace(tool_calls=[{}, "send_message"]))
+    assert result["passed"] is False
+    assert sum("must be an object" in failure for failure in result["failures"]) == 2
+
+
+def test_eval_rejects_malformed_assertion_shapes():
+    result = evaluate_record(trace(assertions={"allowed_actions": "send_message"}))
+    assert result["passed"] is False
+    assert any("assertions.allowed_actions" in failure for failure in result["failures"])
