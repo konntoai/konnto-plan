@@ -16,7 +16,7 @@ from core import (db, now, iso, parse_iso, new_id, current_user, get_ctx, has_sc
 from channels import notify, add_notice, wa_send, wa_configured, send_email, email_html
 from storage import put_object, get_object, extract_text, ext_of, DOC_TYPES, IMAGE_TYPES, AUDIO_TYPES, MAX_BYTES, APP_NAME
 import brain
-from kbrain_memory import build_user_confirmed_fact
+from kbrain_memory import build_user_confirmed_fact, build_fact_correction_metadata
 import engine
 import seed
 
@@ -758,6 +758,10 @@ class FactIn(BaseModel):
     text: str
 
 
+class FactCorrectionIn(BaseModel):
+    text: str = Field(min_length=1, max_length=400)
+
+
 @router.post("/knowledge")
 async def add_fact(body: FactIn, ctx: dict = Depends(get_ctx)):
     if not body.text.strip():
@@ -783,6 +787,50 @@ async def add_fact(body: FactIn, ctx: dict = Depends(get_ctx)):
     )
     await db.knowledge.insert_one(dict(f))
     return f
+
+
+
+
+@router.post("/knowledge/{fact_id}/correct")
+async def correct_fact(fact_id: str, body: FactCorrectionIn, ctx: dict = Depends(get_ctx)):
+    member = ctx["member"]
+    if member.get("member_type") == "partner":
+        raise HTTPException(403, "External users can't change company memory")
+    previous = await db.knowledge.find_one(
+        {"fact_id": fact_id, "org_id": member["org_id"], "deleted": {"$ne": True}, "lifecycle_status": {"$ne": "superseded"}},
+        {"_id": 0},
+    )
+    if not previous:
+        raise HTTPException(404, "Memory fact not found")
+    if not is_owner(member) and previous.get("created_by") != member["member_id"]:
+        raise HTTPException(403, "Only the fact's author or an owner can correct it")
+    corrected_text = body.text.strip()
+    if not corrected_text:
+        raise HTTPException(400, "Write the corrected fact")
+    if corrected_text == previous.get("text"):
+        return previous
+    created_at = iso()
+    corrected = build_user_confirmed_fact(
+        fact_id=new_id("fct"), org_id=member["org_id"], text=corrected_text,
+        category=fact_category(corrected_text), member=member,
+        source="manual_correction", created_at=created_at,
+    )
+    corrected.update({
+        "version": int(previous.get("version") or 1) + 1,
+        "supersedes_fact_id": fact_id,
+        "correction_reason": "User corrected a previously stored business fact",
+    })
+    await db.knowledge.insert_one(dict(corrected))
+    closed = await db.knowledge.update_one(
+        {"fact_id": fact_id, "org_id": member["org_id"], "deleted": {"$ne": True}, "lifecycle_status": {"$ne": "superseded"}},
+        {"$set": build_fact_correction_metadata(previous, corrected_at=created_at, corrected_by=member)},
+    )
+    if not closed.matched_count:
+        await db.knowledge.update_one({"fact_id": corrected["fact_id"], "org_id": member["org_id"]},
+                                      {"$set": {"deleted": True, "deleted_at": iso()}})
+        raise HTTPException(409, "This memory fact changed while you were correcting it. Refresh and try again.")
+    corrected.pop("_id", None)
+    return corrected
 
 
 @router.delete("/knowledge/{fact_id}")
